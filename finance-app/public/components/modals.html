@@ -1,0 +1,272 @@
+<!-- Модальные окна -->
+
+<!-- Модальное окно добавления криптовалюты -->
+<div class="modal fade" id="addCryptoModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить криптовалюту</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addCryptoForm">
+                    <div class="mb-3">
+                        <label class="form-label">Символ</label>
+                        <input type="text" class="form-control" id="cryptoSymbol" required>
+                        <div class="form-text">Например: BTC, ETH, ADA</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Название</label>
+                        <input type="text" class="form-control" id="cryptoName" required>
+                        <div class="form-text">Полное название криптовалюты</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Текущая цена</label>
+                        <input type="number" step="0.01" class="form-control" id="cryptoPrice" required>
+                        <div class="form-text">Текущая рыночная цена в USD</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Рыночная капитализация</label>
+                        <input type="number" class="form-control" id="cryptoMarketCap">
+                        <div class="form-text">Общая стоимость всех монет в USD</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Объем 24ч</label>
+                        <input type="number" class="form-control" id="cryptoVolume">
+                        <div class="form-text">Объем торгов за 24 часа в USD</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Описание</label>
+                        <textarea class="form-control" id="cryptoDescription" rows="3"></textarea>
+                        <div class="form-text">Краткое описание криптовалюты</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="addCrypto()">
+                    <i class="bi bi-plus"></i> Добавить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно добавления кошелька -->
+<div class="modal fade" id="addWalletModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить кошелек</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addWalletForm">
+                    <div class="mb-3">
+                        <label class="form-label">ID пользователя</label>
+                        <input type="number" class="form-control" id="walletUserId" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Адрес кошелька</label>
+                        <input type="text" class="form-control" id="walletAddress" required>
+                        <div class="form-text">Уникальный адрес кошелька</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Тип кошелька</label>
+                        <select class="form-control" id="walletType" required>
+                            <option value="">Выберите тип</option>
+                            <option value="hot">Горячий кошелек</option>
+                            <option value="cold">Холодный кошелек</option>
+                            <option value="exchange">Биржевой кошелек</option>
+                            <option value="hardware">Аппаратный кошелек</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Баланс</label>
+                        <input type="number" step="0.00000001" class="form-control" id="walletBalance" value="0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Код валюты</label>
+                        <input type="text" class="form-control" id="walletCurrency" required>
+                        <div class="form-text">Например: BTC, ETH, USDT</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="addWallet()">
+                    <i class="bi bi-plus"></i> Добавить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно добавления транзакции -->
+<div class="modal fade" id="addTransactionModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить транзакцию</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addTransactionForm">
+                    <div class="mb-3">
+                        <label class="form-label">Сумма</label>
+                        <input type="number" step="0.00000001" class="form-control" id="transactionAmount" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Код валюты</label>
+                        <input type="text" class="form-control" id="transactionCurrency" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Тип транзакции</label>
+                        <select class="form-control" id="transactionType" required>
+                            <option value="">Выберите тип</option>
+                            <option value="buy">Покупка</option>
+                            <option value="sell">Продажа</option>
+                            <option value="transfer">Перевод</option>
+                            <option value="deposit">Пополнение</option>
+                            <option value="withdraw">Вывод</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Статус</label>
+                        <select class="form-control" id="transactionStatus" required>
+                            <option value="pending">В ожидании</option>
+                            <option value="completed">Завершена</option>
+                            <option value="failed">Не удалась</option>
+                            <option value="cancelled">Отменена</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Комиссия</label>
+                        <input type="number" step="0.00000001" class="form-control" id="transactionFee" value="0">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Хэш транзакции</label>
+                        <input type="text" class="form-control" id="transactionHash">
+                        <div class="form-text">Необязательно</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="addTransaction()">
+                    <i class="bi bi-plus"></i> Добавить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно добавления новости -->
+<div class="modal fade" id="addNewsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить новость</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addNewsForm">
+                    <div class="mb-3">
+                        <label class="form-label">Заголовок</label>
+                        <input type="text" class="form-control" id="newsTitle" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Содержание</label>
+                        <textarea class="form-control" id="newsContent" rows="6" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Тип публикации</label>
+                        <select class="form-control" id="newsType">
+                            <option value="news">Новость</option>
+                            <option value="analysis">Анализ</option>
+                            <option value="tutorial">Обучение</option>
+                            <option value="announcement">Объявление</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Категория</label>
+                        <input type="text" class="form-control" id="newsCategory">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">ID автора</label>
+                        <input type="number" class="form-control" id="newsAuthorId" required>
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="newsPublished" checked>
+                            <label class="form-check-label" for="newsPublished">
+                                Опубликовать сразу
+                            </label>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="addNews()">
+                    <i class="bi bi-plus"></i> Добавить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно добавления прогноза -->
+<div class="modal fade" id="addPredictionModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить прогноз</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addPredictionForm">
+                    <div class="mb-3">
+                        <label class="form-label">ID пользователя</label>
+                        <input type="number" class="form-control" id="predictionUserId" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">ID криптовалюты</label>
+                        <input type="number" class="form-control" id="predictionCurrencyId" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Прогнозируемая цена</label>
+                        <input type="number" step="0.01" class="form-control" id="predictionPrice" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Целевая цена</label>
+                        <input type="number" step="0.01" class="form-control" id="predictionTargetPrice" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Тип прогноза</label>
+                        <select class="form-control" id="predictionType" required>
+                            <option value="">Выберите тип</option>
+                            <option value="bullish">Бычий (рост)</option>
+                            <option value="bearish">Медвежий (падение)</option>
+                            <option value="neutral">Нейтральный</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Дата цели</label>
+                        <input type="date" class="form-control" id="predictionTargetDate" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Примечания</label>
+                        <textarea class="form-control" id="predictionNotes" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="addPrediction()">
+                    <i class="bi bi-plus"></i> Добавить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

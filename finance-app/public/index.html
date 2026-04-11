@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finance App - Криптовалютная платформа</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Навигация -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-currency-bitcoin"></i> Finance App
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#" onclick="showDashboard()">
+                            <i class="bi bi-speedometer2"></i> Дашборд
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showCrypto()">
+                            <i class="bi bi-currency-exchange"></i> Криптовалюты
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showWallets()">
+                            <i class="bi bi-wallet2"></i> Кошельки
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showTransactions()">
+                            <i class="bi bi-arrow-left-right"></i> Транзакции
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showNews()">
+                            <i class="bi bi-newspaper"></i> Новости
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showPredictions()">
+                            <i class="bi bi-graph-up"></i> Прогнозы
+                        </a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showAuthModal()">
+                            <i class="bi bi-person-circle"></i> Войти
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <span class="navbar-text">
+                            <i class="bi bi-coin"></i> 
+                            <span id="userBalance">0</span> коинов
+                        </span>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" onclick="showTopupModal()">
+                            <i class="bi bi-plus-circle"></i> Пополнить
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="http://localhost:6868/api-docs" target="_blank">
+                            <i class="bi bi-book"></i> API Docs
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Основной контент -->
+    <div class="container mt-4">
+        <!-- Дашборд -->
+        <div id="dashboard" class="content-section">
+            <h2><i class="bi bi-speedometer2"></i> Дашборд</h2>
+            
+            <!-- Статистические карточки -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">Пользователи</h5>
+                            <h3 id="totalUsers">-</h3>
+                            <small>Всего пользователей</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">Криптовалюты</h5>
+                            <h3 id="totalCrypto">-</h3>
+                            <small>Активные монеты</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-warning text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">Кошельки</h5>
+                            <h3 id="totalWallets">-</h3>
+                            <small>Всего кошельков</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-info text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">Транзакции</h5>
+                            <h3 id="totalTransactions">-</h3>
+                            <small>Всего транзакций</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Графики и аналитика -->
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="bi bi-graph-up"></i> Рыночная капитализация</h5>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="marketCapChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="bi bi-pie-chart"></i> Распределение транзакций</h5>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="transactionChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Криптовалюты -->
+        <div id="crypto" class="content-section" style="display: none;">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="bi bi-currency-exchange"></i> Криптовалюты</h2>
+                <button class="btn btn-primary" onclick="showAddCryptoModal()">
+                    <i class="bi bi-plus"></i> Добавить криптовалюту
+                </button>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Символ</th>
+                            <th>Название</th>
+                            <th>Текущая цена</th>
+                            <th>Рыночная капитализация</th>
+                            <th>Объем 24ч</th>
+                            <th>Статус</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cryptoTableBody">
+                        <tr>
+                            <td colspan="7" class="text-center">Загрузка...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Кошельки -->
+        <div id="wallets" class="content-section" style="display: none;">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="bi bi-wallet2"></i> Кошельки</h2>
+                <button class="btn btn-primary" onclick="showAddWalletModal()">
+                    <i class="bi bi-plus"></i> Добавить кошелек
+                </button>
+            </div>
+            
+            <div class="row" id="walletsContainer">
+                <div class="col-12 text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Загрузка...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Транзакции -->
+        <div id="transactions" class="content-section" style="display: none;">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="bi bi-arrow-left-right"></i> Транзакции</h2>
+                <button class="btn btn-primary" onclick="showAddTransactionModal()">
+                    <i class="bi bi-plus"></i> Добавить транзакцию
+                </button>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Сумма</th>
+                            <th>Валюта</th>
+                            <th>Тип</th>
+                            <th>Статус</th>
+                            <th>Комиссия</th>
+                            <th>Дата</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionsTableBody">
+                        <tr>
+                            <td colspan="8" class="text-center">Загрузка...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Новости -->
+        <div id="news" class="content-section" style="display: none;">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="bi bi-newspaper"></i> Новости</h2>
+                <button class="btn btn-primary" onclick="showAddNewsModal()">
+                    <i class="bi bi-plus"></i> Добавить новость
+                </button>
+            </div>
+            
+            <div class="row" id="newsContainer">
+                <div class="col-12 text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Загрузка...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Прогнозы -->
+        <div id="predictions" class="content-section" style="display: none;">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="bi bi-graph-up"></i> Прогнозы</h2>
+                <button class="btn btn-primary" onclick="showAddPredictionModal()">
+                    <i class="bi bi-plus"></i> Добавить прогноз
+                </button>
+            </div>
+            
+            <div class="row" id="predictionsContainer">
+                <div class="col-12 text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Загрузка...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальные окна -->
+    <!-- Модальное окно аутентификации -->
+    <div class="modal fade" id="authModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <ul class="nav nav-tabs" id="authTab" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="login-tab" data-bs-toggle="tab" data-bs-target="#login" type="button" role="tab">
+                                Вход
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="register-tab" data-bs-toggle="tab" data-bs-target="#register" type="button" role="tab">
+                                Регистрация
+                            </button>
+                        </li>
+                    </ul>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="tab-content" id="authTabContent">
+                        <!-- Форма входа -->
+                        <div class="tab-pane fade show active" id="login" role="tabpanel">
+                            <form id="loginForm">
+                                <div class="mb-3">
+                                    <label class="form-label">Имя пользователя</label>
+                                    <input type="text" class="form-control" id="loginUsername" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Пароль</label>
+                                    <input type="password" class="form-control" id="loginPassword" required>
+                                </div>
+                            </form>
+                        </div>
+                        <!-- Форма регистрации -->
+                        <div class="tab-pane fade" id="register" role="tabpanel">
+                            <form id="registerForm">
+                                <div class="mb-3">
+                                    <label class="form-label">Имя пользователя</label>
+                                    <input type="text" class="form-control" id="registerUsername" required>
+                                    <div class="form-text">Минимум 3 символа</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Email</label>
+                                    <input type="email" class="form-control" id="registerEmail" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Пароль</label>
+                                    <input type="password" class="form-control" id="registerPassword" required>
+                                    <div class="form-text">Минимум 6 символов</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Имя</label>
+                                    <input type="text" class="form-control" id="registerFirstName">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Фамилия</label>
+                                    <input type="text" class="form-control" id="registerLastName">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Телефон</label>
+                                    <input type="tel" class="form-control" id="registerPhone">
+                                </div>
+                                <div class="alert alert-info">
+                                    <i class="bi bi-info-circle"></i> 
+                                    При регистрации вы получите <strong>1000 коинов</strong> в подарок!
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button id="authSubmitBtn" type="button" class="btn btn-primary" onclick="handleAuth()">Далее</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно пополнения баланса -->
+    <div class="modal fade" id="topupModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Пополнение баланса</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="topupForm">
+                        <div class="mb-3">
+                            <label class="form-label">Сумма пополнения (рубли)</label>
+                            <input type="number" class="form-control" id="topupAmount" min="1" step="1" required>
+                            <div class="form-text">1 рубль = 10 коинов</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Способ оплаты</label>
+                            <select class="form-control" id="topupPaymentMethod" required>
+                                <option value="card">Банковская карта</option>
+                                <option value="yandex">Yandex Pay</option>
+                                <option value="qiwi">QIWI</option>
+                            </select>
+                        </div>
+                        <div class="alert alert-success">
+                            <i class="bi bi-calculator"></i> 
+                            Вы получите <strong id="topupCoins">0</strong> коинов
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" onclick="topupBalance()">Пополнить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно добавления криптовалюты -->
+    <div class="modal fade" id="addCryptoModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Добавить криптовалюту</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addCryptoForm">
+                        <div class="mb-3">
+                            <label class="form-label">Символ</label>
+                            <input type="text" class="form-control" id="cryptoSymbol" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Название</label>
+                            <input type="text" class="form-control" id="cryptoName" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Текущая цена</label>
+                            <input type="number" step="0.01" class="form-control" id="cryptoPrice" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Рыночная капитализация</label>
+                            <input type="number" class="form-control" id="cryptoMarketCap">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Объем 24ч</label>
+                            <input type="number" class="form-control" id="cryptoVolume">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Описание</label>
+                            <textarea class="form-control" id="cryptoDescription"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" onclick="addCrypto()">Добавить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast уведомления -->
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+        <div id="notificationToast" class="toast" role="alert">
+            <div class="toast-header">
+                <strong class="me-auto">Уведомление</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+            </div>
+            <div class="toast-body" id="toastMessage">
+                Сообщение
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
