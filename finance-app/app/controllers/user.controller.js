@@ -4,29 +4,49 @@ const CryptoWallet = db.cryptoWallets;
 const { validate, createUserSchema, updateUserSchema } = require("../middleware/validation");
 
 // Create a new User
-exports.create = (req, res) => {
-  // Use validated body
-  const user = {
-    username: req.validatedBody.username,
-    email: req.validatedBody.email,
-    passwordHash: req.validatedBody.passwordHash,
-    firstName: req.validatedBody.firstName,
-    lastName: req.validatedBody.lastName,
-    phone: req.validatedBody.phone,
-    isVerified: req.validatedBody.isVerified ? req.validatedBody.isVerified : false
-  };
+exports.create = async (req, res) => {
+  try {
+    // Use validated body
+    const user = {
+      username: req.validatedBody.username,
+      email: req.validatedBody.email,
+      passwordHash: req.validatedBody.passwordHash,
+      firstName: req.validatedBody.firstName,
+      lastName: req.validatedBody.lastName,
+      phone: req.validatedBody.phone,
+      isVerified: req.validatedBody.isVerified ? req.validatedBody.isVerified : false,
+      coinBalance: 1000 // Начальный бонус 1000 COIN при регистрации
+    };
 
-  // Save User in the database
-  User.create(user)
-    .then(data => {
-      res.send(data);
-    })
-    .catch(err => {
-      res.status(500).send({
-        message: err.message || "Some error occurred while creating the User."
-      });
+    // Save User in the database
+    const userData = await User.create(user);
+
+    // Создать кошелёк для нового пользователя
+    const wallet = {
+      userId: userData.id,
+      walletAddress: generateWalletAddress(userData.username),
+      walletType: 'hot', // Горячий кошелёк по умолчанию
+      balance: 0,
+      currencyCode: 'BTC', // Основная криптовалюта
+      isActive: true
+    };
+
+    await CryptoWallet.create(wallet);
+
+    res.send(userData);
+  } catch (err) {
+    res.status(500).send({
+      message: err.message || "Some error occurred while creating the User."
     });
+  }
 };
+
+// Генерация уникального адреса кошелька
+function generateWalletAddress(username) {
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(2, 8);
+  return `${username.toLowerCase()}_${random}_${timestamp}`;
+}
 
 // Retrieve all Users from the database.
 exports.findAll = (req, res) => {
@@ -140,4 +160,63 @@ exports.deleteAll = (req, res) => {
         message: err.message || "Some error occurred while removing all users."
       });
     });
+};
+
+// Admin: Top up user balance
+exports.adminTopup = async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { currency, amount } = req.body;
+
+    if (!currency || !amount || amount <= 0) {
+      return res.status(400).send({ message: "Currency and amount are required" });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).send({ message: "User not found" });
+    }
+
+    // Conversion rates: 1 COIN = 0.5 USD = 50 RUB
+    const CONVERSION_RATES = {
+      COIN: 1,
+      USD: 2,  // 1 USD = 2 COIN
+      RUB: 0.02 // 1 RUB = 0.02 COIN (50 RUB = 1 COIN)
+    };
+
+    // Update balance based on currency (Conversion: 1 COIN = 0.5 USD = 50 RUB)
+    switch (currency) {
+      case 'COIN':
+        await user.update({ coinBalance: parseFloat(user.coinBalance || 0) + parseFloat(amount) });
+        break;
+      case 'BTC':
+        await user.update({ btcBalance: parseFloat(user.btcBalance || 0) + parseFloat(amount) });
+        break;
+      case 'USD':
+        const coinFromUsd = parseFloat(amount) / 0.5;
+        await user.update({ coinBalance: parseFloat(user.coinBalance || 0) + coinFromUsd });
+        break;
+      case 'RUB':
+        const coinFromRub = parseFloat(amount) / 50;
+        await user.update({ coinBalance: parseFloat(user.coinBalance || 0) + coinFromRub });
+        break;
+      default:
+        return res.status(400).send({ message: "Invalid currency" });
+    }
+
+    res.send({
+      message: `Balance topped up successfully`,
+      user: {
+        id: user.id,
+        username: user.username,
+        coinBalance: user.coinBalance,
+        btcBalance: user.btcBalance,
+        usdBalance: user.usdBalance
+      }
+    });
+  } catch (error) {
+    res.status(500).send({
+      message: error.message || "Error topping up balance"
+    });
+  }
 };

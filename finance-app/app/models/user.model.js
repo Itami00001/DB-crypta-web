@@ -30,8 +30,20 @@ module.exports = (sequelize, Sequelize) => {
       type: Sequelize.BOOLEAN,
       defaultValue: false
     },
+    isAdmin: {
+      type: Sequelize.BOOLEAN,
+      defaultValue: false
+    },
     coinBalance: {
       type: Sequelize.DECIMAL(20, 8),
+      defaultValue: 0
+    },
+    btcBalance: {
+      type: Sequelize.DECIMAL(20, 8),
+      defaultValue: 0
+    },
+    usdBalance: {
+      type: Sequelize.DECIMAL(20, 2),
       defaultValue: 0
     }
   });

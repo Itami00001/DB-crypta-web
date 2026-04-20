@@ -1,0 +1,6 @@
+// Пример конфигурации платежей
+// Скопируйте этот файл в config.js и заполните реальными данными
+window.PAYMENT_CONFIG = {
+    paymentLink: 'https://vtb.paymo.ru/collect-money/qr/?transaction=YOUR_TRANSACTION_ID',
+    qrCodePath: 'qr.jpg'
+};

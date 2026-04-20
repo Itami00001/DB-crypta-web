@@ -206,9 +206,9 @@ exports.getPredictionAccuracy = async (req, res) => {
 exports.getWalletSummary = async (req, res) => {
   try {
     const userId = req.params.userId;
-    
+
     const query = `
-      SELECT 
+      SELECT
         cw.currency_code,
         cc.symbol,
         cc.name as currency_name,
@@ -224,15 +224,15 @@ exports.getWalletSummary = async (req, res) => {
       GROUP BY cw.currency_code, cc.symbol, cc.name, cc.current_price
       ORDER BY total_value_usd DESC
     `;
-    
+
     const results = await db.sequelize.query(query, {
       replacements: { userId },
       type: Sequelize.QueryTypes.SELECT
     });
-    
+
     // Calculate total portfolio value
     const totalPortfolioValue = results.reduce((sum, item) => sum + parseFloat(item.total_value_usd), 0);
-    
+
     res.send({
       user_id: userId,
       total_portfolio_value_usd: totalPortfolioValue,
@@ -241,6 +241,29 @@ exports.getWalletSummary = async (req, res) => {
   } catch (error) {
     res.status(500).send({
       message: "Error retrieving wallet summary: " + error.message
+    });
+  }
+};
+
+// Get global statistics (public endpoint for dashboard counters)
+exports.getGlobalStats = async (req, res) => {
+  try {
+    const query = `
+      SELECT
+        (SELECT COUNT(*) FROM users) as total_users,
+        (SELECT COUNT(*) FROM crypto_currencies WHERE is_active = true) as total_crypto,
+        (SELECT COUNT(*) FROM crypto_wallets WHERE is_active = true) as total_wallets,
+        (SELECT COUNT(*) FROM transactions) as total_transactions
+    `;
+
+    const results = await db.sequelize.query(query, {
+      type: Sequelize.QueryTypes.SELECT
+    });
+
+    res.send(results[0]);
+  } catch (error) {
+    res.status(500).send({
+      message: "Error retrieving global statistics: " + error.message
     });
   }
 };

@@ -188,5 +188,8 @@ module.exports = app => {
    */
   router.delete("/", users.deleteAll);
 
+  // Admin: Top up user balance
+  router.post("/:id/topup", users.adminTopup);
+
   app.use('/api/users', router);
 };

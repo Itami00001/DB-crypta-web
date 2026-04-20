@@ -72,9 +72,35 @@ require("./app/routes/like.routes")(app);
 require("./app/routes/analytics.routes")(app);
 
 const db = require("./app/models");
+const bcrypt = require("bcryptjs");
+
 db.sequelize.sync()
-  .then(() => {
+  .then(async () => {
     console.log("Synced db.");
+
+    // Seed admin user
+    try {
+      const User = db.users;
+      const adminUser = await User.findOne({ where: { username: "admin" } });
+
+      if (!adminUser) {
+        const passwordHash = await bcrypt.hash("adminadmin", 10);
+        await User.create({
+          username: "admin",
+          email: "admin@example.com",
+          passwordHash: passwordHash,
+          firstName: "Admin",
+          lastName: "System",
+          isAdmin: true
+        });
+        console.log("Admin user created.");
+      } else if (!adminUser.isAdmin) {
+        await adminUser.update({ isAdmin: true });
+        console.log("Existing admin user updated to actual admin.");
+      }
+    } catch (error) {
+      console.error("Error seeding admin user:", error);
+    }
   })
   .catch((err) => {
     console.log("Failed to sync db: " + err.message);

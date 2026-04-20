@@ -101,5 +101,18 @@ module.exports = app => {
    */
   router.get("/wallets/:userId/summary", analytics.getWalletSummary);
 
+  // Get global statistics (public endpoint)
+  /**
+   * @swagger
+   * /api/analytics/global/stats:
+   *   get:
+   *     summary: Get global platform statistics
+   *     tags: [Analytics]
+   *     responses:
+   *       200:
+   *         description: Global statistics retrieved successfully
+   */
+  router.get("/global/stats", analytics.getGlobalStats);
+
   app.use('/api/analytics', router);
 };

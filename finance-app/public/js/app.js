@@ -11,23 +11,86 @@ let authModalInstance = null;
 let topupModalInstance = null;
 let authRequestInFlight = false;
 
+// Theme management
+const THEME_KEY = 'financeAppTheme';
+const THEME_LABELS = {
+    light: 'Светлая',
+    dark: 'Темная',
+    system: 'Системная'
+};
+const THEME_ICONS = {
+    light: 'bi-sun',
+    dark: 'bi-moon',
+    system: 'bi-palette'
+};
+
+function initTheme() {
+    const savedTheme = localStorage.getItem(THEME_KEY) || 'light';
+    setTheme(savedTheme, false);
+}
+
+function setTheme(theme, save = true) {
+    if (save) {
+        localStorage.setItem(THEME_KEY, theme);
+    }
+
+    // Handle system theme - remove data-theme attribute to let OS preference take effect
+    if (theme === 'system') {
+        document.documentElement.setAttribute('data-theme', 'system');
+    } else {
+        document.documentElement.setAttribute('data-theme', theme);
+    }
+
+    // Update theme switcher UI
+    const themeLabel = document.getElementById('themeLabel');
+    const themeIcon = document.getElementById('themeIcon');
+    if (themeLabel) themeLabel.textContent = THEME_LABELS[theme];
+    if (themeIcon) {
+        themeIcon.className = `bi ${THEME_ICONS[theme]} theme-icon`;
+    }
+
+    // Update active state in dropdown
+    document.querySelectorAll('.theme-switcher .dropdown-item').forEach(item => {
+        item.classList.remove('active');
+        if (item.dataset.theme === theme) {
+            item.classList.add('active');
+        }
+    });
+
+    // Update navbar class based on theme
+    const navbar = document.querySelector('.navbar');
+    if (navbar) {
+        navbar.classList.remove('navbar-light', 'navbar-dark');
+        if (theme === 'dark' || theme === 'system') {
+            navbar.classList.add('navbar-dark');
+        } else {
+            navbar.classList.add('navbar-light');
+        }
+    }
+
+    // Re-render charts with theme-aware colors
+    if (currentSection === 'dashboard') {
+        loadDashboardData();
+    }
+}
+
 // Инициализация приложения
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
+    // Initialize theme first
+    initTheme();
+
     // Проверяем наличие токена в localStorage
     const savedToken = localStorage.getItem('authToken');
     const savedUser = localStorage.getItem('currentUser');
-    
+
     if (savedToken && savedUser) {
         authToken = savedToken;
         currentUser = JSON.parse(savedUser);
         updateUIForLoggedInUser();
     }
-    
+
     showDashboard();
     loadDashboardData();
-    
-    // Добавляем обработчик для поля пополнения
-    document.getElementById('topupAmount').addEventListener('input', updateTopupCoins);
 
     // Кешируем инстансы модалок (чтобы не создавать новый каждый раз)
     const authModalEl = document.getElementById('authModal');
@@ -146,18 +209,18 @@ function showSection(sectionId) {
     document.querySelectorAll('.content-section').forEach(section => {
         section.style.display = 'none';
     });
-    
+
     // Убрать активный класс с всех ссылок навигации
     document.querySelectorAll('.nav-link').forEach(link => {
         link.classList.remove('active');
     });
-    
+
     // Показать выбранную секцию
     document.getElementById(sectionId).style.display = 'block';
-    
+
     // Добавить активный класс к текущей ссылке
     document.querySelector(`[onclick="show${sectionId.charAt(0).toUpperCase() + sectionId.slice(1)}()"]`).classList.add('active');
-    
+
     currentSection = sectionId;
 }
 
@@ -191,30 +254,185 @@ function showPredictions() {
     loadPredictionsData();
 }
 
+// Админ функции
+function showAdminUsers() {
+    showSection('adminUsers');
+    loadAdminUsers();
+}
+
+function showAdminTopup() {
+    showSection('adminTopup');
+    loadAdminUsersForTopup();
+}
+
+async function loadAdminUsers() {
+    try {
+        const response = await fetch(`${API_BASE}/users`);
+        const users = await response.json();
+
+        const tbody = document.getElementById('adminUsersTableBody');
+        tbody.innerHTML = users.map(u => {
+            const coinRate = 0.5;
+            const btcRate = 50000;
+            const totalCoin = parseFloat(u.coinBalance || 0) +
+                (parseFloat(u.btcBalance || 0) * (btcRate / coinRate)) +
+                (parseFloat(u.usdBalance || 0) / coinRate);
+
+            return `
+                <tr>
+                    <td>${u.id}</td>
+                    <td>${u.username}</td>
+                    <td>${u.email}</td>
+                    <td>${parseFloat(u.coinBalance || 0).toFixed(2)}</td>
+                    <td>${parseFloat(u.btcBalance || 0).toFixed(4)}</td>
+                    <td>${parseFloat(u.usdBalance || 0).toFixed(2)}</td>
+                    <td><strong>${totalCoin.toFixed(2)}</strong></td>
+                </tr>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading admin users:', error);
+        showToast('Ошибка загрузки пользователей', 'danger');
+    }
+}
+
+async function loadAdminUsersForTopup() {
+    try {
+        const response = await fetch(`${API_BASE}/users`);
+        const users = await response.json();
+
+        const select = document.getElementById('adminTopupUserId');
+        select.innerHTML = '<option value="">Выберите пользователя...</option>' +
+            users.map(u => `<option value="${u.id}">${u.username} (${u.email})</option>`).join('');
+    } catch (error) {
+        console.error('Error loading users for topup:', error);
+        showToast('Ошибка загрузки пользователей', 'danger');
+    }
+}
+
+async function adminTopupBalance() {
+    try {
+        const userIdElement = document.getElementById('adminTopupUserId');
+        const currencyElement = document.getElementById('adminTopupCurrency');
+        const amountElement = document.getElementById('adminTopupAmount');
+
+        const userId = userIdElement ? userIdElement.value : null;
+        const currency = currencyElement ? currencyElement.value : null;
+        const amountValue = amountElement ? amountElement.value : null;
+        const amount = parseFloat(amountValue);
+
+        if (!userId || !currency || amountValue === '' || isNaN(amount) || amount <= 0) {
+            showToast('Заполните все поля корректно', 'danger');
+            return;
+        }
+
+        const response = await fetch(`${API_BASE}/users/${userId}/topup`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ currency, amount })
+        });
+
+        if (response.ok) {
+            showToast(`Баланс пользователя успешно пополнен на ${amount} ${currency}`, 'success');
+            document.getElementById('adminTopupForm').reset();
+            loadAdminUsers();
+        } else {
+            const error = await response.json();
+            showToast(`Ошибка: ${error.message}`, 'danger');
+        }
+    } catch (error) {
+        console.error('Error topping up balance:', error);
+        showToast('Ошибка пополнения баланса', 'danger');
+    }
+}
+
+async function exportUsersToPDF() {
+    try {
+        const response = await fetch(`${API_BASE}/users`);
+        const users = await response.json();
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        // Заголовок
+        doc.setFontSize(18);
+        doc.text('Список пользователей', 14, 22);
+        doc.setFontSize(11);
+        doc.text(`Дата экспорта: ${new Date().toLocaleDateString('ru-RU')}`, 14, 30);
+
+        // Подготовка данных для таблицы
+        const tableData = users.map(u => {
+            const coinRate = 0.5;
+            const btcRate = 50000;
+            const totalCoin = parseFloat(u.coinBalance || 0) +
+                (parseFloat(u.btcBalance || 0) * (btcRate / coinRate)) +
+                (parseFloat(u.usdBalance || 0) / coinRate);
+
+            return [
+                u.id,
+                u.username,
+                u.email,
+                parseFloat(u.coinBalance || 0).toFixed(2),
+                parseFloat(u.btcBalance || 0).toFixed(4),
+                parseFloat(u.usdBalance || 0).toFixed(2),
+                totalCoin.toFixed(2)
+            ];
+        });
+
+        // Создание таблицы
+        doc.autoTable({
+            head: [['ID', 'Username', 'Email', 'COIN', 'BTC', 'USD', 'Сумма в COIN']],
+            body: tableData,
+            startY: 40,
+            styles: {
+                fontSize: 9,
+                cellPadding: 3
+            },
+            headStyles: {
+                fillColor: [66, 139, 202],
+                textColor: 255,
+                fontStyle: 'bold'
+            }
+        });
+
+        // Сохранение PDF
+        doc.save(`users_export_${new Date().toISOString().split('T')[0]}.pdf`);
+        showToast('PDF успешно создан', 'success');
+    } catch (error) {
+        console.error('Error exporting to PDF:', error);
+        showToast('Ошибка экспорта в PDF', 'danger');
+    }
+}
+
 // Функции загрузки данных
 async function loadDashboardData() {
     try {
-        // Загрузка статистики
-        const [users, crypto, wallets, transactions] = await Promise.all([
-            fetch(`${API_BASE}/users`).then(r => r.json()),
-            fetch(`${API_BASE}/crypto-currencies`).then(r => r.json()),
-            fetch(`${API_BASE}/crypto-wallets`).then(r => r.json()),
-            fetch(`${API_BASE}/transactions`).then(r => r.json())
-        ]);
-        
+        const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
+
+        // Загрузка глобальной статистики (публичный endpoint)
+        const stats = await fetch(`${API_BASE}/analytics/global/stats`).then(r => r.json());
+
         // Обновление счетчиков
-        document.getElementById('totalUsers').textContent = users.length;
-        document.getElementById('totalCrypto').textContent = crypto.filter(c => c.isActive).length;
-        document.getElementById('totalWallets').textContent = wallets.length;
-        document.getElementById('totalTransactions').textContent = transactions.length;
-        
+        document.getElementById('totalUsers').textContent = stats.total_users;
+        document.getElementById('totalCrypto').textContent = stats.total_crypto;
+        document.getElementById('totalWallets').textContent = stats.total_wallets;
+        document.getElementById('totalTransactions').textContent = stats.total_transactions;
+
         // Загрузка данных для графиков
+        const [crypto, transactions] = await Promise.all([
+            fetch(`${API_BASE}/crypto-currencies`, { headers }).then(r => r.json()),
+            fetch(`${API_BASE}/transactions`, { headers }).then(r => r.json())
+        ]);
+
         loadCharts(crypto, transactions);
-        
+
         // Загрузка дополнительных данных
         loadRecentTransactions();
         loadPopularCrypto();
-        
+
     } catch (error) {
         console.error('Error loading dashboard data:', error);
         showToast('Ошибка загрузки данных дашборда', 'danger');
@@ -233,21 +451,73 @@ async function loadCryptoData() {
 
 async function loadWalletsData() {
     try {
-        const wallets = await fetch(`${API_BASE}/crypto-wallets`).then(r => r.json());
+        const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
+
+        // Если пользователь не авторизован, не загружаем кошельки
+        if (!authToken) {
+            renderWallets([]);
+            return;
+        }
+
+        let wallets = await fetch(`${API_BASE}/crypto-wallets`, { headers }).then(r => r.json());
+
         renderWallets(wallets);
     } catch (error) {
         console.error('Error loading wallets data:', error);
         showToast('Ошибка загрузки кошельков', 'danger');
+        renderWallets([]);
+    }
+}
+
+// Создание кошелька по умолчанию если его нет
+async function createDefaultWallet() {
+    try {
+        const headers = {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json'
+        };
+
+        const response = await fetch(`${API_BASE}/crypto-wallets`, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+                walletAddress: `COIN_${currentUser.id}_${Date.now()}`,
+                walletType: 'internal',
+                balance: 1000,
+                currencyCode: 'COIN',
+                isActive: true
+            })
+        });
+
+        if (response.ok) {
+            const wallet = await response.json();
+            showToast('Кошелёк создан', 'success');
+            return wallet;
+        } else {
+            throw new Error('Failed to create wallet');
+        }
+    } catch (error) {
+        console.error('Error creating default wallet:', error);
+        return null;
     }
 }
 
 async function loadTransactionsData() {
     try {
-        const transactions = await fetch(`${API_BASE}/transactions`).then(r => r.json());
+        const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
+
+        // Если пользователь не авторизован, не загружаем транзакции
+        if (!authToken) {
+            renderTransactions([]);
+            return;
+        }
+
+        const transactions = await fetch(`${API_BASE}/transactions`, { headers }).then(r => r.json());
         renderTransactions(transactions);
     } catch (error) {
         console.error('Error loading transactions data:', error);
         showToast('Ошибка загрузки транзакций', 'danger');
+        renderTransactions([]);
     }
 }
 
@@ -274,12 +544,12 @@ async function loadPredictionsData() {
 // Функции рендеринга
 function renderCryptoTable(crypto) {
     const tbody = document.getElementById('cryptoTableBody');
-    
+
     if (crypto.length === 0) {
         tbody.innerHTML = '<tr><td colspan="7" class="text-center">Нет криптовалют</td></tr>';
         return;
     }
-    
+
     tbody.innerHTML = crypto.map(c => `
         <tr>
             <td><strong>${c.symbol}</strong></td>
@@ -306,35 +576,40 @@ function renderCryptoTable(crypto) {
 
 function renderWallets(wallets) {
     const container = document.getElementById('walletsContainer');
-    
+
     if (wallets.length === 0) {
         container.innerHTML = '<div class="col-12 text-center"><p>Нет кошельков</p></div>';
         return;
     }
-    
-    container.innerHTML = wallets.map(w => `
+
+    container.innerHTML = wallets.map(w => {
+        const balanceDisplay = w.balance === null ? '<span class="text-muted">Скрыто</span>' : parseFloat(w.balance).toFixed(8);
+        const ownerName = w.user ? w.user.username : 'Неизвестно';
+        return `
         <div class="col-md-4 mb-4">
             <div class="wallet-card">
                 <h5>${w.currencyCode}</h5>
-                <div class="wallet-balance">${parseFloat(w.balance).toFixed(8)}</div>
+                <div class="wallet-balance">${balanceDisplay}</div>
                 <div class="wallet-address">${w.walletAddress}</div>
                 <div class="mt-3">
+                    <small>Владелец: ${ownerName}</small><br>
                     <small>Тип: ${w.walletType}</small><br>
                     <small>ID: ${w.id}</small>
                 </div>
             </div>
         </div>
-    `).join('');
+    `;
+    }).join('');
 }
 
 function renderTransactions(transactions) {
     const tbody = document.getElementById('transactionsTableBody');
-    
+
     if (transactions.length === 0) {
         tbody.innerHTML = '<tr><td colspan="8" class="text-center">Нет транзакций</td></tr>';
         return;
     }
-    
+
     tbody.innerHTML = transactions.map(t => `
         <tr>
             <td>${t.id}</td>
@@ -366,12 +641,12 @@ function renderTransactions(transactions) {
 
 function renderNews(news) {
     const container = document.getElementById('newsContainer');
-    
+
     if (news.length === 0) {
         container.innerHTML = '<div class="col-12 text-center"><p>Нет новостей</p></div>';
         return;
     }
-    
+
     container.innerHTML = news.map(n => `
         <div class="col-md-6 mb-4">
             <div class="card news-card">
@@ -398,12 +673,12 @@ function renderNews(news) {
 
 function renderPredictions(predictions) {
     const container = document.getElementById('predictionsContainer');
-    
+
     if (predictions.length === 0) {
         container.innerHTML = '<div class="col-12 text-center"><p>Нет прогнозов</p></div>';
         return;
     }
-    
+
     container.innerHTML = predictions.map(p => `
         <div class="col-md-4 mb-4">
             <div class="card prediction-card prediction-${p.predictionType}">
@@ -429,13 +704,19 @@ function renderPredictions(predictions) {
 
 // Графики
 function loadCharts(crypto, transactions) {
+    // Get theme-aware colors from CSS variables
+    const computedStyle = getComputedStyle(document.documentElement);
+    const accentPrimary = computedStyle.getPropertyValue('--accent-primary').trim();
+    const accentSecondary = computedStyle.getPropertyValue('--accent-secondary').trim();
+    const textPrimary = computedStyle.getPropertyValue('--text-primary').trim();
+
     // График рыночной капитализации
     const marketCapCtx = document.getElementById('marketCapChart').getContext('2d');
-    
+
     if (charts.marketCap) {
         charts.marketCap.destroy();
     }
-    
+
     charts.marketCap = new Chart(marketCapCtx, {
         type: 'bar',
         data: {
@@ -443,8 +724,8 @@ function loadCharts(crypto, transactions) {
             datasets: [{
                 label: 'Рыночная капитализация',
                 data: crypto.slice(0, 5).map(c => parseFloat(c.marketCap)),
-                backgroundColor: 'rgba(102, 126, 234, 0.6)',
-                borderColor: 'rgba(102, 126, 234, 1)',
+                backgroundColor: accentPrimary + '99',
+                borderColor: accentPrimary,
                 borderWidth: 1
             }]
         },
@@ -455,45 +736,75 @@ function loadCharts(crypto, transactions) {
                 y: {
                     beginAtZero: true,
                     ticks: {
-                        callback: function(value) {
+                        callback: function (value) {
                             return '$' + value.toLocaleString();
-                        }
+                        },
+                        color: textPrimary
+                    },
+                    grid: {
+                        color: accentSecondary + '33'
+                    }
+                },
+                x: {
+                    ticks: {
+                        color: textPrimary
+                    },
+                    grid: {
+                        color: accentSecondary + '33'
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    labels: {
+                        color: textPrimary
                     }
                 }
             }
         }
     });
-    
+
     // График типов транзакций
     const transactionCtx = document.getElementById('transactionChart').getContext('2d');
-    
+
     if (charts.transaction) {
         charts.transaction.destroy();
     }
-    
+
     const transactionTypes = {};
     transactions.forEach(t => {
         transactionTypes[t.transactionType] = (transactionTypes[t.transactionType] || 0) + 1;
     });
-    
+
+    const themeColors = [
+        accentPrimary + '99',
+        accentSecondary + '99',
+        '#FF638499',
+        '#36A2EB99',
+        '#FFCE5699',
+        '#4BC0C099'
+    ];
+
     charts.transaction = new Chart(transactionCtx, {
         type: 'doughnut',
         data: {
             labels: Object.keys(transactionTypes),
             datasets: [{
                 data: Object.values(transactionTypes),
-                backgroundColor: [
-                    'rgba(255, 99, 132, 0.6)',
-                    'rgba(54, 162, 235, 0.6)',
-                    'rgba(255, 206, 86, 0.6)',
-                    'rgba(75, 192, 192, 0.6)'
-                ],
+                backgroundColor: themeColors.slice(0, Object.keys(transactionTypes).length),
                 borderWidth: 1
             }]
         },
         options: {
             responsive: true,
-            maintainAspectRatio: false
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: {
+                        color: textPrimary
+                    }
+                }
+            }
         }
     });
 }
@@ -546,15 +857,57 @@ function showAddPredictionModal() {
 }
 
 function showTopupModal() {
+    // Показываем никнейм пользователя в инструкции
+    const nicknameDisplay = document.getElementById('userNicknameDisplay');
+    if (nicknameDisplay && currentUser) {
+        nicknameDisplay.textContent = currentUser.username;
+    }
+
+    // Загружаем QR-код и ссылку из конфигурации (файл config.js не должен быть в git)
+    // Создайте файл public/js/config.js с содержимым:
+    // window.PAYMENT_CONFIG = {
+    //     paymentLink: 'https://vtb.paymo.ru/collect-money/qr/?transaction=bb8719e1-386e-4680-9d36-84cd7e86ee2a',
+    //     qrCodePath: 'qr.jpg'
+    // };
+    const paymentLink = window.PAYMENT_CONFIG?.paymentLink || '';
+    const qrCodePath = window.PAYMENT_CONFIG?.qrCodePath || '';
+
+    // Устанавливаем ссылку
+    const linkElement = document.getElementById('paymentLink');
+    if (linkElement && paymentLink) {
+        linkElement.href = paymentLink;
+        linkElement.textContent = paymentLink;
+    }
+
+    // Устанавливаем путь к QR-коду
+    const qrImage = document.getElementById('qrCodeImage');
+    if (qrImage && qrCodePath) {
+        qrImage.src = qrCodePath;
+    }
+
+    // Сбрасываем видимость QR кода
+    document.getElementById('topupInstruction').style.display = 'block';
+    document.getElementById('qrCodeContainer').style.display = 'none';
+
     const modal = new bootstrap.Modal(document.getElementById('topupModal'));
     modal.show();
+}
+
+function showQRCode() {
+    document.getElementById('topupInstruction').style.display = 'none';
+    document.getElementById('qrCodeContainer').style.display = 'block';
+}
+
+function hideQRCode() {
+    document.getElementById('topupInstruction').style.display = 'block';
+    document.getElementById('qrCodeContainer').style.display = 'none';
 }
 
 // CRUD операции
 async function addCrypto() {
     const form = document.getElementById('addCryptoForm');
     const formData = new FormData(form);
-    
+
     const cryptoData = {
         symbol: document.getElementById('cryptoSymbol').value,
         name: document.getElementById('cryptoName').value,
@@ -564,7 +917,7 @@ async function addCrypto() {
         description: document.getElementById('cryptoDescription').value,
         isActive: true
     };
-    
+
     try {
         const response = await fetch(`${API_BASE}/crypto-currencies`, {
             method: 'POST',
@@ -573,7 +926,7 @@ async function addCrypto() {
             },
             body: JSON.stringify(cryptoData)
         });
-        
+
         if (response.ok) {
             showToast('Криптовалюта успешно добавлена', 'success');
             bootstrap.Modal.getInstance(document.getElementById('addCryptoModal')).hide();
@@ -593,12 +946,12 @@ async function addCrypto() {
 function showToast(message, type = 'info') {
     const toastElement = document.getElementById('notificationToast');
     const toastMessage = document.getElementById('toastMessage');
-    
+
     toastMessage.textContent = message;
-    
+
     // Обновить классы toast
     toastElement.className = `toast align-items-center text-white bg-${type} border-0`;
-    
+
     const toast = new bootstrap.Toast(toastElement);
     toast.show();
 }
@@ -612,7 +965,7 @@ async function addWallet() {
         balance: parseFloat(document.getElementById('walletBalance').value) || 0,
         currencyCode: document.getElementById('walletCurrency').value
     };
-    
+
     try {
         const response = await fetch(`${API_BASE}/crypto-wallets`, {
             method: 'POST',
@@ -621,7 +974,7 @@ async function addWallet() {
             },
             body: JSON.stringify(walletData)
         });
-        
+
         if (response.ok) {
             showToast('Кошелек успешно добавлен', 'success');
             bootstrap.Modal.getInstance(document.getElementById('addWalletModal')).hide();
@@ -648,7 +1001,7 @@ async function addTransaction() {
         fromWalletId: null,
         toWalletId: null
     };
-    
+
     try {
         const response = await fetch(`${API_BASE}/transactions`, {
             method: 'POST',
@@ -657,7 +1010,7 @@ async function addTransaction() {
             },
             body: JSON.stringify(transactionData)
         });
-        
+
         if (response.ok) {
             showToast('Транзакция успешно добавлена', 'success');
             bootstrap.Modal.getInstance(document.getElementById('addTransactionModal')).hide();
@@ -682,7 +1035,7 @@ async function addNews() {
         authorId: parseInt(document.getElementById('newsAuthorId').value),
         isPublished: document.getElementById('newsPublished').checked
     };
-    
+
     try {
         const response = await fetch(`${API_BASE}/news-posts`, {
             method: 'POST',
@@ -691,7 +1044,7 @@ async function addNews() {
             },
             body: JSON.stringify(newsData)
         });
-        
+
         if (response.ok) {
             showToast('Новость успешно добавлена', 'success');
             bootstrap.Modal.getInstance(document.getElementById('addNewsModal')).hide();
@@ -717,7 +1070,7 @@ async function addPrediction() {
         targetDate: document.getElementById('predictionTargetDate').value,
         notes: document.getElementById('predictionNotes').value
     };
-    
+
     try {
         const response = await fetch(`${API_BASE}/user-predictions`, {
             method: 'POST',
@@ -726,7 +1079,7 @@ async function addPrediction() {
             },
             body: JSON.stringify(predictionData)
         });
-        
+
         if (response.ok) {
             showToast('Прогноз успешно добавлен', 'success');
             bootstrap.Modal.getInstance(document.getElementById('addPredictionModal')).hide();
@@ -766,9 +1119,10 @@ function deleteTransaction(id) {
 // Загрузка дополнительных данных для дашборда
 async function loadRecentTransactions() {
     try {
-        const transactions = await fetch(`${API_BASE}/transactions`).then(r => r.json());
+        const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
+        const transactions = await fetch(`${API_BASE}/transactions`, { headers }).then(r => r.json());
         const recent = transactions.slice(0, 5);
-        
+
         const container = document.getElementById('recentTransactions');
         container.innerHTML = recent.map(t => `
             <div class="d-flex justify-content-between align-items-center mb-2">
@@ -788,9 +1142,10 @@ async function loadRecentTransactions() {
 
 async function loadPopularCrypto() {
     try {
-        const crypto = await fetch(`${API_BASE}/crypto-currencies`).then(r => r.json());
+        const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
+        const crypto = await fetch(`${API_BASE}/crypto-currencies`, { headers }).then(r => r.json());
         const popular = crypto.filter(c => c.isActive).slice(0, 5);
-        
+
         const container = document.getElementById('popularCrypto');
         container.innerHTML = popular.map(c => `
             <div class="d-flex justify-content-between align-items-center mb-2">
@@ -828,7 +1183,17 @@ function updateUIForLoggedInUser() {
         authLink.innerHTML = `<i class="bi bi-person-check"></i> ${currentUser.username}`;
         authLink.onclick = logout;
     }
-    
+
+    // Показываем админ-меню только для админов
+    const adminUsersMenu = document.getElementById('adminUsersMenu');
+    const adminTopupMenu = document.getElementById('adminTopupMenu');
+    if (adminUsersMenu) {
+        adminUsersMenu.style.display = (!!currentUser.isAdmin) ? 'block' : 'none';
+    }
+    if (adminTopupMenu) {
+        adminTopupMenu.style.display = (!!currentUser.isAdmin) ? 'block' : 'none';
+    }
+
     // Обновляем баланс
     if (currentUser.coinBalance !== undefined) {
         document.getElementById('userBalance').textContent = parseFloat(currentUser.coinBalance).toLocaleString();
@@ -840,16 +1205,22 @@ function logout() {
     localStorage.removeItem('currentUser');
     authToken = null;
     currentUser = null;
-    
+
     // Обновляем UI
     const authLink = document.querySelector('a[onclick="logout()"]');
     if (authLink) {
         authLink.innerHTML = '<i class="bi bi-person-circle"></i> Войти';
         authLink.onclick = showAuthModal;
     }
-    
+
     document.getElementById('userBalance').textContent = '0';
-    
+
+    // Скрываем админ-меню
+    const adminUsersMenu = document.getElementById('adminUsersMenu');
+    const adminTopupMenu = document.getElementById('adminTopupMenu');
+    if (adminUsersMenu) adminUsersMenu.style.display = 'none';
+    if (adminTopupMenu) adminTopupMenu.style.display = 'none';
+
     showToast('Вы вышли из системы', 'info');
 }
 
@@ -857,7 +1228,7 @@ async function handleAuth() {
     if (authRequestInFlight) return;
 
     const activeTab = document.querySelector('.tab-pane.active').id;
-    
+
     if (activeTab === 'login') {
         await login();
     } else {
@@ -873,7 +1244,7 @@ async function login() {
 
     const username = document.getElementById('loginUsername').value;
     const password = document.getElementById('loginPassword').value;
-    
+
     try {
         const response = await fetch(`${API_BASE}/auth/signin`, {
             method: 'POST',
@@ -882,21 +1253,21 @@ async function login() {
             },
             body: JSON.stringify({ username, password })
         });
-        
+
         const data = await response.json();
-        
+
         if (response.ok) {
             authToken = data.token;
             currentUser = data.user;
-            
+
             // Сохраняем в localStorage
             localStorage.setItem('authToken', authToken);
             localStorage.setItem('currentUser', JSON.stringify(currentUser));
-            
+
             updateUIForLoggedInUser();
             authModalInstance?.hide();
             document.getElementById('loginForm').reset();
-            
+
             showToast('Вход выполнен успешно!', 'success');
         } else {
             showToast(data.message || 'Ошибка входа', 'danger');
@@ -924,7 +1295,7 @@ async function register() {
         lastName: document.getElementById('registerLastName').value,
         phone: document.getElementById('registerPhone').value
     };
-    
+
     try {
         const response = await fetch(`${API_BASE}/auth/signup`, {
             method: 'POST',
@@ -933,21 +1304,21 @@ async function register() {
             },
             body: JSON.stringify(userData)
         });
-        
+
         const data = await response.json();
-        
+
         if (response.ok) {
             showToast('Регистрация успешна! Вы получили 1000 коинов!', 'success');
-            
+
             // Переключаем на вкладку входа
             document.getElementById('register-tab').classList.remove('active');
             document.getElementById('login-tab').classList.add('active');
             document.getElementById('register').classList.remove('show', 'active');
             document.getElementById('login').classList.add('show', 'active');
-            
+
             // Заполняем форму входа
             document.getElementById('loginUsername').value = userData.username;
-            
+
             document.getElementById('registerForm').reset();
         } else {
             showToast(data.message || 'Ошибка регистрации', 'danger');
@@ -961,54 +1332,4 @@ async function register() {
     }
 }
 
-function updateTopupCoins() {
-    const amount = parseFloat(document.getElementById('topupAmount').value) || 0;
-    const coins = amount * 10; // 1 рубль = 10 коинов
-    document.getElementById('topupCoins').textContent = coins.toLocaleString();
-}
-
-async function topupBalance() {
-    if (!authToken) {
-        showToast('Сначала войдите в систему', 'warning');
-        showAuthModal();
-        return;
-    }
-    
-    const amount = parseFloat(document.getElementById('topupAmount').value);
-    const paymentMethod = document.getElementById('topupPaymentMethod').value;
-    
-    if (!amount || amount <= 0) {
-        showToast('Введите корректную сумму', 'warning');
-        return;
-    }
-    
-    try {
-        const response = await fetch(`${API_BASE}/auth/topup`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
-            },
-            body: JSON.stringify({ amount, paymentMethod })
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-            // Обновляем баланс пользователя
-            currentUser.coinBalance = data.newBalance;
-            localStorage.setItem('currentUser', JSON.stringify(currentUser));
-            
-            updateUIForLoggedInUser();
-            bootstrap.Modal.getInstance(document.getElementById('topupModal')).hide();
-            document.getElementById('topupForm').reset();
-            
-            showToast(`Баланс успешно пополнен на ${data.amount} коинов!`, 'success');
-        } else {
-            showToast(data.message || 'Ошибка пополнения', 'danger');
-        }
-    } catch (error) {
-        console.error('Topup error:', error);
-        showToast('Ошибка при пополнении баланса', 'danger');
-    }
-}
+// Функции updateTopupCoins и topupBalance удалены, так как самопополнение заменено на QR-код

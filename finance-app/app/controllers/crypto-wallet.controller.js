@@ -37,6 +37,8 @@ exports.create = (req, res) => {
 
 // Retrieve all CryptoWallets from database.
 exports.findAll = (req, res) => {
+  const currentUserId = req.userId; // From auth middleware
+
   CryptoWallet.findAll({
     include: [
       {
@@ -47,7 +49,15 @@ exports.findAll = (req, res) => {
     ]
   })
     .then(data => {
-      res.send(data);
+      // Hide balance for wallets that don't belong to the current user
+      const wallets = data.map(wallet => {
+        const walletData = wallet.toJSON();
+        if (wallet.userId !== currentUserId) {
+          walletData.balance = null;
+        }
+        return walletData;
+      });
+      res.send(wallets);
     })
     .catch(err => {
       res.status(500).send({
@@ -59,6 +69,7 @@ exports.findAll = (req, res) => {
 // Find a single CryptoWallet with an id
 exports.findOne = (req, res) => {
   const id = req.params.id;
+  const currentUserId = req.userId; // From auth middleware
 
   CryptoWallet.findByPk(id, {
     include: [
@@ -79,7 +90,12 @@ exports.findOne = (req, res) => {
   })
     .then(data => {
       if (data) {
-        res.send(data);
+        const walletData = data.toJSON();
+        // Hide balance if wallet doesn't belong to current user
+        if (walletData.userId !== currentUserId) {
+          walletData.balance = null;
+        }
+        res.send(walletData);
       } else {
         res.status(404).send({
           message: `Cannot find CryptoWallet with id=${id}.`
@@ -115,6 +131,42 @@ exports.findByUserId = (req, res) => {
         message: err.message || "Some error occurred while retrieving user's crypto wallets."
       });
     });
+};
+
+// Find current user's wallets
+exports.findMyWallets = (req, res) => {
+  try {
+    const currentUserId = req.userId; // From auth middleware
+
+    if (!currentUserId) {
+      return res.status(401).send({
+        message: "Unauthorized: User ID not found"
+      });
+    }
+
+    CryptoWallet.findAll({
+      where: { userId: currentUserId },
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'username', 'firstName', 'lastName']
+        }
+      ]
+    })
+      .then(data => {
+        res.send(data);
+      })
+      .catch(err => {
+        res.status(500).send({
+          message: err.message || "Some error occurred while retrieving your crypto wallets."
+        });
+      });
+  } catch (error) {
+    res.status(500).send({
+      message: error.message || "Server error while retrieving wallets"
+    });
+  }
 };
 
 // Update a CryptoWallet by the id in the request

@@ -5,6 +5,8 @@ const jwt = require("jsonwebtoken");
 
 // Регистрация пользователя
 exports.signup = async (req, res) => {
+  const transaction = await db.sequelize.transaction();
+
   try {
     const { username, email, password, firstName, lastName, phone } = req.body;
 
@@ -19,6 +21,7 @@ exports.signup = async (req, res) => {
     });
 
     if (existingUser) {
+      await transaction.rollback();
       return res.status(400).send({
         message: "Пользователь с таким именем или email уже существует"
       });
@@ -37,9 +40,8 @@ exports.signup = async (req, res) => {
       lastName,
       phone,
       isVerified: true,
-      // Добавляем начальный баланс в виде внутренней валюты
       coinBalance: 1000 // 1000 коинов при регистрации
-    });
+    }, { transaction });
 
     // Создание кошелька для внутренней валюты
     const CryptoCurrency = db.cryptoCurrencies;
@@ -48,7 +50,7 @@ exports.signup = async (req, res) => {
     // Проверяем существует ли внутренняя валюта
     let internalCurrency = await CryptoCurrency.findOne({
       where: { symbol: "COIN" }
-    });
+    }, { transaction });
 
     if (!internalCurrency) {
       internalCurrency = await CryptoCurrency.create({
@@ -59,7 +61,7 @@ exports.signup = async (req, res) => {
         marketCap: 0,
         volume24h: 0,
         isActive: true
-      });
+      }, { transaction });
     }
 
     // Создание кошелька для пользователя
@@ -69,7 +71,9 @@ exports.signup = async (req, res) => {
       walletType: "internal",
       balance: 1000, // Начальный баланс
       currencyCode: "COIN"
-    });
+    }, { transaction });
+
+    await transaction.commit();
 
     res.status(201).send({
       message: "Пользователь успешно зарегистрирован",
@@ -83,6 +87,7 @@ exports.signup = async (req, res) => {
       }
     });
   } catch (error) {
+    await transaction.rollback();
     res.status(500).send({
       message: error.message || "Ошибка при регистрации пользователя"
     });
@@ -114,9 +119,14 @@ exports.signin = async (req, res) => {
       });
     }
 
+    // Автоматическая установка isAdmin для пользователя admin
+    if (username === 'admin' && !user.isAdmin) {
+      await user.update({ isAdmin: true });
+    }
+
     // Создание JWT токена
     const token = jwt.sign(
-      { id: user.id, username: user.username },
+      { id: user.id, username: user.username, isAdmin: user.isAdmin || username === 'admin' },
       process.env.JWT_SECRET || "your-secret-key",
       { expiresIn: "24h" }
     );
@@ -130,7 +140,8 @@ exports.signin = async (req, res) => {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        coinBalance: user.coinBalance || 0
+        coinBalance: user.coinBalance || 0,
+        isAdmin: user.isAdmin || username === 'admin'
       }
     });
   } catch (error) {
@@ -167,7 +178,8 @@ exports.getCurrentUser = async (req, res) => {
     res.status(200).send({
       user: {
         ...user.toJSON(),
-        coinBalance: coinWallet ? coinWallet.balance : 0
+        coinBalance: coinWallet ? coinWallet.balance : 0,
+        isAdmin: user.isAdmin || false
       }
     });
   } catch (error) {

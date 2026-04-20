@@ -131,3 +131,4 @@ private/
 # Config overrides
 config/local.js
 config/production.js
+public/js/config.js

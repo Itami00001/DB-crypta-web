@@ -1,5 +1,9 @@
 module.exports = (sequelize, Sequelize) => {
   const CryptoWallet = sequelize.define("cryptoWallet", {
+    userId: {
+      type: Sequelize.INTEGER,
+      allowNull: false
+    },
     walletAddress: {
       type: Sequelize.STRING,
       allowNull: false,

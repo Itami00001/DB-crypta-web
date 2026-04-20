@@ -34,6 +34,9 @@ services:
     - DB_PORT=$POSTGRESDB_DOCKER_PORT
     stdin_open: true
     tty: true
+    volumes:
+    - ./finance-app/public:/finance-app/public
+    - ./finance-app/app:/finance-app/app
 
 volumes:
   db:
