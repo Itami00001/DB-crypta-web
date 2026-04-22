@@ -242,6 +242,7 @@ function showWallets() {
 function showTransactions() {
     showSection('transactions');
     loadTransactionsData();
+    loadUsersForTransfer();
 }
 
 function showNews() {
@@ -407,6 +408,114 @@ async function exportUsersToPDF() {
     }
 }
 
+async function submitTransfer() {
+    try {
+        const recipientUsername = document.getElementById('transferRecipient').value;
+        const currency = document.getElementById('transferCurrency').value;
+        const amount = parseFloat(document.getElementById('transferAmount').value);
+
+        if (!recipientUsername || !currency || isNaN(amount) || amount <= 0) {
+            showToast('Заполните все поля корректно', 'danger');
+            return;
+        }
+
+        const response = await fetch(`${API_BASE}/transactions/transfer`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ toUsername: recipientUsername, currency, amount })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            showToast(`Перевод ${amount} ${currency} успешно отправлен`, 'success');
+            document.getElementById('transferForm').reset();
+            loadTransactionsData();
+        } else {
+            const error = await response.json();
+            showToast(`Ошибка: ${error.message}`, 'danger');
+        }
+    } catch (error) {
+        console.error('Error submitting transfer:', error);
+        showToast('Ошибка перевода', 'danger');
+    }
+}
+
+async function submitExchange() {
+    try {
+        const fromCurrency = document.getElementById('exchangeFromCurrency').value;
+        const toCurrency = document.getElementById('exchangeToCurrency').value;
+        const amount = parseFloat(document.getElementById('exchangeAmount').value);
+
+        if (!fromCurrency || !toCurrency || isNaN(amount) || amount <= 0) {
+            showToast('Заполните все поля корректно', 'danger');
+            return;
+        }
+
+        if (fromCurrency === toCurrency) {
+            showToast('Выберите разные валюты', 'danger');
+            return;
+        }
+
+        const response = await fetch(`${API_BASE}/transactions/exchange`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ fromCurrency, toCurrency, amount })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            showToast(data.message || 'Обмен завершен', 'success');
+            document.getElementById('exchangeForm').reset();
+            loadTransactionsData();
+            // Обновить баланс в UI если нужно
+            if (currentUser) {
+                const updatedUser = await fetch(`${API_BASE}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                }).then(r => r.json());
+                if (updatedUser.user) {
+                    currentUser = updatedUser.user;
+                    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                    updateUIForLoggedInUser();
+                }
+            }
+        } else {
+            const error = await response.json();
+            showToast(`Ошибка: ${error.message}`, 'danger');
+        }
+    } catch (error) {
+        console.error('Error submitting exchange:', error);
+        showToast('Ошибка обмена', 'danger');
+    }
+}
+
+async function loadUsersForTransfer() {
+    try {
+        const response = await fetch(`${API_BASE}/users`, {
+            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+        });
+        const users = await response.json();
+
+        if (!Array.isArray(users)) {
+            console.error('Expected array of users, got:', users);
+            return;
+        }
+
+        const select = document.getElementById('transferRecipient');
+        select.innerHTML = '<option value="">Выберите пользователя...</option>' +
+            users.filter(u => u.username !== currentUser?.username)
+                .map(u => `<option value="${u.username}">${u.username} (${u.email})</option>`)
+                .join('');
+    } catch (error) {
+        console.error('Error loading users for transfer:', error);
+    }
+}
+
 // Функции загрузки данных
 async function loadDashboardData() {
     try {
@@ -423,11 +532,11 @@ async function loadDashboardData() {
 
         // Загрузка данных для графиков
         const [crypto, transactions] = await Promise.all([
-            fetch(`${API_BASE}/crypto-currencies`, { headers }).then(r => r.json()),
-            fetch(`${API_BASE}/transactions`, { headers }).then(r => r.json())
+            fetch(`${API_BASE}/crypto-currencies`, { headers }).then(r => r.ok ? r.json() : []),
+            fetch(`${API_BASE}/transactions`, { headers }).then(r => r.ok ? r.json() : [])
         ]);
 
-        loadCharts(crypto, transactions);
+        loadCharts(Array.isArray(crypto) ? crypto : [], Array.isArray(transactions) ? transactions : []);
 
         // Загрузка дополнительных данных
         loadRecentTransactions();

@@ -488,6 +488,23 @@ body {
 
 [data-theme="light"] .wallet-card {
     background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%) !important;
+    color: white !important;
+}
+
+[data-theme="light"] .wallet-card h5 {
+    color: white !important;
+}
+
+[data-theme="light"] .wallet-balance {
+    color: white !important;
+}
+
+[data-theme="light"] .wallet-address {
+    color: rgba(255, 255, 255, 0.8) !important;
+}
+
+[data-theme="light"] .wallet-card .text-muted {
+    color: var(--bg-secondary) !important;
 }
 
 [data-theme="light"] .form-control {
@@ -559,6 +576,27 @@ body {
     color: var(--text-primary) !important;
 }
 
+[data-theme="system"] .wallet-card {
+    background: linear-gradient(135deg, #599D9C 0%, #B7E6E5 100%) !important;
+    color: #113B3A !important;
+}
+
+[data-theme="system"] .wallet-card h5 {
+    color: #113B3A !important;
+}
+
+[data-theme="system"] .wallet-balance {
+    color: #113B3A !important;
+}
+
+[data-theme="system"] .wallet-address {
+    color: rgba(17, 59, 58, 0.8) !important;
+}
+
+[data-theme="system"] .wallet-card .text-muted {
+    color: rgba(17, 59, 58, 0.6) !important;
+}
+
 [data-theme="dark"] .table thead th {
     background-color: var(--bg-secondary) !important;
     color: var(--text-primary) !important;
@@ -594,6 +632,23 @@ body {
 
 [data-theme="dark"] .wallet-card {
     background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%) !important;
+    color: #000000 !important;
+}
+
+[data-theme="dark"] .wallet-card h5 {
+    color: #000000 !important;
+}
+
+[data-theme="dark"] .wallet-balance {
+    color: #000000 !important;
+}
+
+[data-theme="dark"] .wallet-address {
+    color: rgba(0, 0, 0, 0.7) !important;
+}
+
+[data-theme="dark"] .wallet-card .text-muted {
+    color: rgba(0, 0, 0, 0.5) !important;
 }
 
 [data-theme="dark"] .form-control {

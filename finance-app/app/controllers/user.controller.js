@@ -164,45 +164,64 @@ exports.deleteAll = (req, res) => {
 
 // Admin: Top up user balance
 exports.adminTopup = async (req, res) => {
+  const transaction = await db.sequelize.transaction();
   try {
     const userId = req.params.id;
     const { currency, amount } = req.body;
 
     if (!currency || !amount || amount <= 0) {
+      await transaction.rollback();
       return res.status(400).send({ message: "Currency and amount are required" });
     }
 
-    const user = await User.findByPk(userId);
+    const user = await User.findByPk(userId, { transaction });
     if (!user) {
+      await transaction.rollback();
       return res.status(404).send({ message: "User not found" });
     }
 
-    // Conversion rates: 1 COIN = 0.5 USD = 50 RUB
-    const CONVERSION_RATES = {
-      COIN: 1,
-      USD: 2,  // 1 USD = 2 COIN
-      RUB: 0.02 // 1 RUB = 0.02 COIN (50 RUB = 1 COIN)
-    };
+    const CryptoWallet = db.cryptoWallets;
+    const balanceField = currency === 'RUB' ? 'rubBalance' : (currency === 'USD' ? 'usdBalance' : (currency === 'BTC' ? 'btcBalance' : 'coinBalance'));
 
     // Update balance based on currency (Conversion: 1 COIN = 0.5 USD = 50 RUB)
     switch (currency) {
       case 'COIN':
-        await user.update({ coinBalance: parseFloat(user.coinBalance || 0) + parseFloat(amount) });
+        await user.update({ coinBalance: parseFloat(user.coinBalance || 0) + parseFloat(amount) }, { transaction });
         break;
       case 'BTC':
-        await user.update({ btcBalance: parseFloat(user.btcBalance || 0) + parseFloat(amount) });
+        await user.update({ btcBalance: parseFloat(user.btcBalance || 0) + parseFloat(amount) }, { transaction });
         break;
       case 'USD':
         const coinFromUsd = parseFloat(amount) / 0.5;
-        await user.update({ coinBalance: parseFloat(user.coinBalance || 0) + coinFromUsd });
+        await user.update({ coinBalance: parseFloat(user.coinBalance || 0) + coinFromUsd }, { transaction });
         break;
       case 'RUB':
         const coinFromRub = parseFloat(amount) / 50;
-        await user.update({ coinBalance: parseFloat(user.coinBalance || 0) + coinFromRub });
+        await user.update({ coinBalance: parseFloat(user.coinBalance || 0) + coinFromRub }, { transaction });
         break;
       default:
+        await transaction.rollback();
         return res.status(400).send({ message: "Invalid currency" });
     }
+
+    // Синхронизируем кошелек для указанной валюты
+    let wallet = await CryptoWallet.findOne({
+      where: { userId: userId, currencyCode: currency },
+      transaction
+    });
+    if (!wallet) {
+      wallet = await CryptoWallet.create({
+        userId: userId,
+        walletAddress: `${currency}_${userId}_${Date.now()}`,
+        walletType: 'internal',
+        balance: parseFloat(user[balanceField]),
+        currencyCode: currency
+      }, { transaction });
+    } else {
+      await wallet.update({ balance: parseFloat(user[balanceField]) }, { transaction });
+    }
+
+    await transaction.commit();
 
     res.send({
       message: `Balance topped up successfully`,
@@ -211,10 +230,12 @@ exports.adminTopup = async (req, res) => {
         username: user.username,
         coinBalance: user.coinBalance,
         btcBalance: user.btcBalance,
-        usdBalance: user.usdBalance
+        usdBalance: user.usdBalance,
+        rubBalance: user.rubBalance
       }
     });
   } catch (error) {
+    await transaction.rollback();
     res.status(500).send({
       message: error.message || "Error topping up balance"
     });

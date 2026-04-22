@@ -45,6 +45,10 @@ module.exports = (sequelize, Sequelize) => {
     usdBalance: {
       type: Sequelize.DECIMAL(20, 2),
       defaultValue: 0
+    },
+    rubBalance: {
+      type: Sequelize.DECIMAL(20, 2),
+      defaultValue: 0
     }
   });
 

@@ -11,8 +11,8 @@ const verifyToken = (req, res, next) => {
   }
 
   // Удаляем "Bearer " если он есть
-  const tokenValue = token.startsWith("Bearer ") 
-    ? token.slice(7, token.length) 
+  const tokenValue = token.startsWith("Bearer ")
+    ? token.slice(7, token.length)
     : token;
 
   jwt.verify(tokenValue, process.env.JWT_SECRET || "your-secret-key", (err, decoded) => {
@@ -28,6 +28,28 @@ const verifyToken = (req, res, next) => {
   });
 };
 
+// Middleware для опциональной проверки JWT токена
+const optionalVerifyToken = (req, res, next) => {
+  const token = req.headers["x-access-token"] || req.headers["authorization"];
+
+  if (!token) {
+    return next();
+  }
+
+  const tokenValue = token.startsWith("Bearer ")
+    ? token.slice(7, token.length)
+    : token;
+
+  jwt.verify(tokenValue, process.env.JWT_SECRET || "your-secret-key", (err, decoded) => {
+    if (!err) {
+      req.userId = decoded.id;
+      req.username = decoded.username;
+    }
+    next();
+  });
+};
+
 module.exports = {
-  verifyToken
+  verifyToken,
+  optionalVerifyToken
 };

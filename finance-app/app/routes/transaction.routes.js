@@ -1,27 +1,34 @@
 module.exports = app => {
   const transactions = require("../controllers/transaction.controller.js");
+  const { verifyToken, optionalVerifyToken } = require("../middleware/auth.middleware.js");
   var router = require("express").Router();
 
-  // Create a new Transaction
-  router.post("/", transactions.create);
+  // Create a new Transaction (Requires Token)
+  router.post("/", verifyToken, transactions.create);
 
-  // Retrieve all Transactions
-  router.get("/", transactions.findAll);
+  // User-to-user transfer (Requires Token)
+  router.post("/transfer", verifyToken, transactions.transferBetweenUsers);
 
-  // Retrieve a single Transaction with id
-  router.get("/:id", transactions.findOne);
+  // Currency exchange (Requires Token)
+  router.post("/exchange", verifyToken, transactions.exchangeCurrency);
 
-  // Retrieve transactions by wallet ID
-  router.get("/wallet/:walletId", transactions.findByWalletId);
+  // Retrieve all Transactions (Optional Token)
+  router.get("/", optionalVerifyToken, transactions.findAll);
 
-  // Update a Transaction with id
-  router.put("/:id", transactions.update);
+  // Retrieve a single Transaction with id (Requires Token)
+  router.get("/:id", verifyToken, transactions.findOne);
 
-  // Delete a Transaction with id
-  router.delete("/:id", transactions.delete);
+  // Retrieve transactions by wallet ID (Requires Token)
+  router.get("/wallet/:walletId", verifyToken, transactions.findByWalletId);
 
-  // Delete all Transactions
-  router.delete("/", transactions.deleteAll);
+  // Update a Transaction with id (Requires Token)
+  router.put("/:id", verifyToken, transactions.update);
+
+  // Delete a Transaction with id (Requires Token)
+  router.delete("/:id", verifyToken, transactions.delete);
+
+  // Delete all Transactions (Requires Token)
+  router.delete("/", verifyToken, transactions.deleteAll);
 
   app.use('/api/transactions', router);
 };

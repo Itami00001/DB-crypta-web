@@ -264,6 +264,85 @@
                 </button>
             </div>
 
+            <!-- Карточки для перевода и обмена -->
+            <div class="row mb-4">
+                <!-- Перевод пользователю -->
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="bi bi-person-arrow-up"></i> Перевод пользователю</h5>
+                        </div>
+                        <div class="card-body">
+                            <form id="transferForm">
+                                <div class="mb-3">
+                                    <label class="form-label">Получатель</label>
+                                    <select class="form-select" id="transferRecipient" required>
+                                        <option value="">Выберите пользователя...</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Валюта</label>
+                                    <select class="form-select" id="transferCurrency" required>
+                                        <option value="COIN">COIN</option>
+                                        <option value="BTC">BTC</option>
+                                        <option value="USD">USD</option>
+                                        <option value="RUB">RUB</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Сумма</label>
+                                    <input type="number" step="0.00000001" class="form-control" id="transferAmount" required>
+                                </div>
+                                <button type="button" class="btn btn-primary" onclick="submitTransfer()">
+                                    <i class="bi bi-send"></i> Отправить
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Обмен валют -->
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="bi bi-arrow-left-right"></i> Обмен валют</h5>
+                        </div>
+                        <div class="card-body">
+                            <form id="exchangeForm">
+                                <div class="mb-3">
+                                    <label class="form-label">Из валюты</label>
+                                    <select class="form-select" id="exchangeFromCurrency" required>
+                                        <option value="COIN">COIN</option>
+                                        <option value="BTC">BTC</option>
+                                        <option value="USD">USD</option>
+                                        <option value="RUB">RUB</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">В валюту</label>
+                                    <select class="form-select" id="exchangeToCurrency" required>
+                                        <option value="COIN">COIN</option>
+                                        <option value="BTC">BTC</option>
+                                        <option value="USD">USD</option>
+                                        <option value="RUB">RUB</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Сумма</label>
+                                    <input type="number" step="0.00000001" class="form-control" id="exchangeAmount" required>
+                                </div>
+                                <div class="alert alert-info">
+                                    <small><strong>Курс:</strong> 1 COIN = 0.5 USD = 50 RUB</small>
+                                </div>
+                                <button type="button" class="btn btn-success" onclick="submitExchange()">
+                                    <i class="bi bi-arrow-repeat"></i> Обменять
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="table-responsive">
                 <table class="table table-striped">
                     <thead>

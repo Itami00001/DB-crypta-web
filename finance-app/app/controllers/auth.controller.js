@@ -99,12 +99,17 @@ exports.signin = async (req, res) => {
   try {
     const { username, password } = req.body;
 
+    console.log(`[SIGNIN] Attempting login for username: ${username}`);
+
     // Поиск пользователя
     const user = await User.findOne({
       where: { username: username }
     });
 
+    console.log(`[SIGNIN] User found: ${!!user}`);
+
     if (!user) {
+      console.log(`[SIGNIN] User not found: ${username}`);
       return res.status(401).send({
         message: "Неверные учетные данные"
       });
@@ -113,7 +118,10 @@ exports.signin = async (req, res) => {
     // Проверка пароля
     const isValidPassword = await bcrypt.compare(password, user.passwordHash);
 
+    console.log(`[SIGNIN] Password valid: ${isValidPassword}`);
+
     if (!isValidPassword) {
+      console.log(`[SIGNIN] Invalid password for user: ${username}`);
       return res.status(401).send({
         message: "Неверные учетные данные"
       });
@@ -121,6 +129,7 @@ exports.signin = async (req, res) => {
 
     // Автоматическая установка isAdmin для пользователя admin
     if (username === 'admin' && !user.isAdmin) {
+      console.log(`[SIGNIN] Granting admin rights to user: ${username}`);
       await user.update({ isAdmin: true });
     }
 
@@ -130,6 +139,8 @@ exports.signin = async (req, res) => {
       process.env.JWT_SECRET || "your-secret-key",
       { expiresIn: "24h" }
     );
+
+    console.log(`[SIGNIN] Login successful for user: ${username}`);
 
     res.status(200).send({
       message: "Вход выполнен успешно",
@@ -141,12 +152,19 @@ exports.signin = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         coinBalance: user.coinBalance || 0,
+        btcBalance: user.btcBalance || 0,
+        usdBalance: user.usdBalance || 0,
+        rubBalance: user.rubBalance || 0,
         isAdmin: user.isAdmin || username === 'admin'
       }
     });
   } catch (error) {
+    console.error("[SIGNIN] Error:", error);
+    console.error("[SIGNIN] Error stack:", error.stack);
     res.status(500).send({
-      message: error.message || "Ошибка при входе"
+      message: error.message || "Ошибка при входе",
+      error: error.toString(),
+      stack: error.stack
     });
   }
 };
@@ -179,6 +197,9 @@ exports.getCurrentUser = async (req, res) => {
       user: {
         ...user.toJSON(),
         coinBalance: coinWallet ? coinWallet.balance : 0,
+        btcBalance: user.btcBalance || 0,
+        usdBalance: user.usdBalance || 0,
+        rubBalance: user.rubBalance || 0,
         isAdmin: user.isAdmin || false
       }
     });
@@ -227,9 +248,13 @@ exports.topupBalance = async (req, res) => {
       });
     }
 
-    // Обновляем баланс
+    // Обновляем баланс в кошельке
     const newBalance = parseFloat(coinWallet.balance) + coinAmount;
     await coinWallet.update({ balance: newBalance });
+
+    // Синхронизируем баланс в users.coinBalance
+    const user = await User.findByPk(userId);
+    await user.update({ coinBalance: newBalance });
 
     // Создаем запись о транзакции
     await Transaction.create({

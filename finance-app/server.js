@@ -74,9 +74,35 @@ require("./app/routes/analytics.routes")(app);
 const db = require("./app/models");
 const bcrypt = require("bcryptjs");
 
-db.sequelize.sync()
-  .then(async () => {
-    console.log("Synced db.");
+const startApp = async () => {
+  try {
+    await db.sequelize.authenticate();
+    console.log("Connection has been established successfully.");
+
+    // Manual column check BEFORE sync
+    const columnsToAdd = [
+      { name: 'coin_balance', type: 'DECIMAL(20,8)', default: '0' },
+      { name: 'btc_balance', type: 'DECIMAL(20,8)', default: '0' },
+      { name: 'usd_balance', type: 'DECIMAL(20,2)', default: '0' },
+      { name: 'rub_balance', type: 'DECIMAL(20,2)', default: '0' }
+    ];
+
+    for (const col of columnsToAdd) {
+      try {
+        // We use double quotes for table and column names to be safe in Postgres
+        await db.sequelize.query(`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "${col.name}" ${col.type} DEFAULT ${col.default}`);
+        console.log(`Column ${col.name} verified/added.`);
+      } catch (e) {
+        console.log(`Note: ${col.name} check for table "users" resulted in: ${e.message}`);
+        // Try again with lowercase table name without quotes just in case
+        try {
+          await db.sequelize.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${col.name} ${col.type} DEFAULT ${col.default}`);
+        } catch (e2) { }
+      }
+    }
+
+    await db.sequelize.sync({ alter: true });
+    console.log("Synced db successfully.");
 
     // Seed admin user
     try {
@@ -84,30 +110,35 @@ db.sequelize.sync()
       const adminUser = await User.findOne({ where: { username: "admin" } });
 
       if (!adminUser) {
-        const passwordHash = await bcrypt.hash("adminadmin", 10);
+        const hashedPassword = await bcrypt.hash("adminadmin", 10);
         await User.create({
           username: "admin",
           email: "admin@example.com",
-          passwordHash: passwordHash,
-          firstName: "Admin",
-          lastName: "System",
-          isAdmin: true
+          passwordHash: hashedPassword,
+          isAdmin: true,
+          coinBalance: 0,
+          btcBalance: 0,
+          usdBalance: 0,
+          rubBalance: 0
         });
         console.log("Admin user created.");
       } else if (!adminUser.isAdmin) {
         await adminUser.update({ isAdmin: true });
-        console.log("Existing admin user updated to actual admin.");
+        console.log("Admin rights granted.");
       }
-    } catch (error) {
-      console.error("Error seeding admin user:", error);
+    } catch (err) {
+      console.error("Admin seeding error:", err);
     }
-  })
-  .catch((err) => {
-    console.log("Failed to sync db: " + err.message);
-  });
 
-// set port, listen for requests
-const PORT = process.env.NODE_DOCKER_PORT || 8080;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}.`);
-});
+    const PORT = process.env.PORT || 6868;
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}.`);
+    });
+
+  } catch (err) {
+    console.error("Unable to connect to the database:", err);
+    process.exit(1);
+  }
+};
+
+startApp();
