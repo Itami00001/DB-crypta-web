@@ -22,6 +22,14 @@ module.exports = (sequelize, Sequelize) => {
     viewCount: {
       type: Sequelize.INTEGER,
       defaultValue: 0
+    },
+    url: {
+      type: Sequelize.TEXT,
+      allowNull: true
+    },
+    imageUrl: {
+      type: Sequelize.TEXT,
+      allowNull: true
     }
   });
 

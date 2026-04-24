@@ -13,13 +13,21 @@ module.exports = (sequelize, Sequelize) => {
       type: Sequelize.STRING,
       allowNull: false
     },
-    balance: {
+    coinBalance: {
       type: Sequelize.DECIMAL(20, 8),
       defaultValue: 0
     },
-    currencyCode: {
-      type: Sequelize.STRING,
-      allowNull: false
+    btcBalance: {
+      type: Sequelize.DECIMAL(20, 8),
+      defaultValue: 0
+    },
+    usdBalance: {
+      type: Sequelize.DECIMAL(20, 2),
+      defaultValue: 0
+    },
+    rubBalance: {
+      type: Sequelize.DECIMAL(20, 2),
+      defaultValue: 0
     },
     isActive: {
       type: Sequelize.BOOLEAN,

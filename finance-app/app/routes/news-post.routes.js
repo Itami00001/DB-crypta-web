@@ -223,5 +223,31 @@ module.exports = app => {
    */
   router.delete("/", newsPosts.deleteAll);
 
+  // Sync news with CryptoCompare
+  /**
+   * @swagger
+   * /api/news-posts/sync:
+   *   post:
+   *     summary: Sync news with CryptoCompare API
+   *     tags: [NewsPosts]
+   *     responses:
+   *       200:
+   *         description: News synced successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 message:
+   *                   type: string
+   *                 total:
+   *                   type: integer
+   *                 new:
+   *                   type: integer
+   *       500:
+   *         description: Error syncing news
+   */
+  router.post("/sync", newsPosts.syncWithCryptoCompare);
+
   app.use('/api/news-posts', router);
 };

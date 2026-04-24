@@ -5,6 +5,7 @@ module.exports = (db) => {
   db.users.hasMany(db.comments, { foreignKey: 'userId', as: 'comments' });
   db.users.hasMany(db.userPredictions, { foreignKey: 'userId', as: 'predictions' });
   db.users.hasMany(db.likes, { foreignKey: 'userId', as: 'likes' });
+  db.users.hasMany(db.chartPoints, { foreignKey: 'userId', as: 'chartPoints' });
 
   // CryptoWallet associations
   db.cryptoWallets.belongsTo(db.users, { foreignKey: 'userId', as: 'user' });
@@ -38,4 +39,7 @@ module.exports = (db) => {
   // Like associations
   db.likes.belongsTo(db.users, { foreignKey: 'userId', as: 'user' });
   db.likes.belongsTo(db.newsPosts, { foreignKey: 'postId', as: 'post' });
+
+  // ChartPoint associations
+  db.chartPoints.belongsTo(db.users, { foreignKey: 'userId', as: 'user' });
 };

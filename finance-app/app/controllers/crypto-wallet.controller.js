@@ -6,19 +6,21 @@ const Transaction = db.transactions;
 // Create a new CryptoWallet
 exports.create = (req, res) => {
   // Validate request
-  if (!req.body.walletAddress || !req.body.walletType || !req.body.currencyCode || !req.body.userId) {
+  if (!req.body.walletAddress || !req.body.walletType || !req.body.userId) {
     res.status(400).send({
-      message: "Wallet address, type, currency code and user ID are required!"
+      message: "Wallet address, type and user ID are required!"
     });
     return;
   }
 
-  // Create a CryptoWallet
+  // Create a CryptoWallet with all balance fields
   const cryptoWallet = {
     walletAddress: req.body.walletAddress,
     walletType: req.body.walletType,
-    balance: req.body.balance ? req.body.balance : 0,
-    currencyCode: req.body.currencyCode,
+    coinBalance: req.body.coinBalance ? req.body.coinBalance : 0,
+    btcBalance: req.body.btcBalance ? req.body.btcBalance : 0,
+    usdBalance: req.body.usdBalance ? req.body.usdBalance : 0,
+    rubBalance: req.body.rubBalance ? req.body.rubBalance : 0,
     isActive: req.body.isActive ? req.body.isActive : true,
     userId: req.body.userId
   };
@@ -44,16 +46,21 @@ exports.findAll = (req, res) => {
       {
         model: User,
         as: 'user',
-        attributes: ['id', 'username', 'firstName', 'lastName']
+        attributes: ['id', 'username', 'firstName', 'lastName', 'isAdmin']
       }
     ]
   })
     .then(data => {
-      // Hide balance for wallets that don't belong to the current user
+      // Hide all balances for wallets that don't belong to the current user (unless admin)
       const wallets = data.map(wallet => {
         const walletData = wallet.toJSON();
-        if (wallet.userId !== currentUserId) {
-          walletData.balance = null;
+        
+        // Hide balances if wallet doesn't belong to current user AND current user is not admin
+        if (wallet.userId !== currentUserId && !req.isAdmin) {
+          walletData.coinBalance = null;
+          walletData.btcBalance = null;
+          walletData.usdBalance = null;
+          walletData.rubBalance = null;
         }
         return walletData;
       });
@@ -91,9 +98,12 @@ exports.findOne = (req, res) => {
     .then(data => {
       if (data) {
         const walletData = data.toJSON();
-        // Hide balance if wallet doesn't belong to current user
+        // Hide all balances if wallet doesn't belong to current user
         if (walletData.userId !== currentUserId) {
-          walletData.balance = null;
+          walletData.coinBalance = null;
+          walletData.btcBalance = null;
+          walletData.usdBalance = null;
+          walletData.rubBalance = null;
         }
         res.send(walletData);
       } else {
@@ -233,4 +243,69 @@ exports.deleteAll = (req, res) => {
         message: err.message || "Some error occurred while removing all crypto wallets."
       });
     });
+};
+
+// Ensure user has a wallet with balances from user profile
+exports.ensureWallet = async (req, res) => {
+  try {
+    const currentUserId = req.userId; // From auth middleware
+
+    if (!currentUserId) {
+      return res.status(401).send({
+        message: "Unauthorized: User ID not found"
+      });
+    }
+
+    // Get user data with balances
+    const user = await User.findByPk(currentUserId);
+    if (!user) {
+      return res.status(404).send({
+        message: "User not found"
+      });
+    }
+
+    // Check if user has a wallet
+    let wallet = await CryptoWallet.findOne({
+      where: { userId: currentUserId }
+    });
+
+    if (!wallet) {
+      // Create new wallet with user's balances
+      wallet = await CryptoWallet.create({
+        walletAddress: `wallet_${user.username}_${Date.now()}`,
+        walletType: 'default',
+        coinBalance: user.coinBalance || 0,
+        btcBalance: user.btcBalance || 0,
+        usdBalance: user.usdBalance || 0,
+        rubBalance: user.rubBalance || 0,
+        isActive: true,
+        userId: currentUserId
+      });
+    } else {
+      // Update existing wallet with user's balances if they're different
+      const needsUpdate = 
+        parseFloat(wallet.coinBalance) !== parseFloat(user.coinBalance) ||
+        parseFloat(wallet.btcBalance) !== parseFloat(user.btcBalance) ||
+        parseFloat(wallet.usdBalance) !== parseFloat(user.usdBalance) ||
+        parseFloat(wallet.rubBalance) !== parseFloat(user.rubBalance);
+
+      if (needsUpdate) {
+        await wallet.update({
+          coinBalance: user.coinBalance || 0,
+          btcBalance: user.btcBalance || 0,
+          usdBalance: user.usdBalance || 0,
+          rubBalance: user.rubBalance || 0
+        });
+      }
+    }
+
+    res.send({
+      message: "Wallet ensured successfully",
+      wallet: wallet
+    });
+  } catch (error) {
+    res.status(500).send({
+      message: error.message || "Error ensuring wallet"
+    });
+  }
 };

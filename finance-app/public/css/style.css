@@ -141,6 +141,33 @@ body {
     opacity: 0.8;
 }
 
+.wallet-balances {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 15px;
+}
+
+.balance-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 0.95rem;
+}
+
+.balance-item:last-child {
+    margin-bottom: 0;
+}
+
+.balance-label {
+    opacity: 0.8;
+    font-weight: 500;
+}
+
+.balance-value {
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+}
+
 /* Новости */
 .news-card {
     border-radius: 15px;

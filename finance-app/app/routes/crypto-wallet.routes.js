@@ -27,5 +27,8 @@ module.exports = app => {
   // Delete all CryptoWallets
   router.delete("/", verifyToken, cryptoWallets.deleteAll);
 
+  // Ensure user has a wallet with balances from user profile
+  router.post("/ensure", verifyToken, cryptoWallets.ensureWallet);
+
   app.use('/api/crypto-wallets', router);
 };

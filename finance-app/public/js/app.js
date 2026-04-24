@@ -205,6 +205,11 @@ function validateLoginForm() {
 
 // Функции навигации
 function showSection(sectionId) {
+    // Остановить автообновление если уходим с прогнозов
+    if (currentSection === 'predictions' && sectionId !== 'predictions') {
+        if (countdownInterval) clearInterval(countdownInterval);
+    }
+
     // Скрыть все секции
     document.querySelectorAll('.content-section').forEach(section => {
         section.style.display = 'none';
@@ -243,6 +248,7 @@ function showTransactions() {
     showSection('transactions');
     loadTransactionsData();
     loadUsersForTransfer();
+    loadWalletsForTopup();
 }
 
 function showNews() {
@@ -252,7 +258,8 @@ function showNews() {
 
 function showPredictions() {
     showSection('predictions');
-    loadPredictionsData();
+    loadMarketCharts();
+    startUpdateTimer();
 }
 
 // Админ функции
@@ -497,22 +504,44 @@ async function submitExchange() {
 async function loadUsersForTransfer() {
     try {
         const response = await fetch(`${API_BASE}/users`, {
-            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+            headers: { 'Authorization': `Bearer ${authToken}` }
         });
         const users = await response.json();
 
-        if (!Array.isArray(users)) {
-            console.error('Expected array of users, got:', users);
-            return;
-        }
-
         const select = document.getElementById('transferRecipient');
-        select.innerHTML = '<option value="">Выберите пользователя...</option>' +
-            users.filter(u => u.username !== currentUser?.username)
-                .map(u => `<option value="${u.username}">${u.username} (${u.email})</option>`)
-                .join('');
+        select.innerHTML = '<option value="">Выберите пользователя...</option>';
+
+        users.forEach(user => {
+            if (user.id !== currentUser?.id) {
+                const option = document.createElement('option');
+                option.value = user.id;
+                option.textContent = user.username;
+                select.appendChild(option);
+            }
+        });
     } catch (error) {
         console.error('Error loading users for transfer:', error);
+    }
+}
+
+async function loadWalletsForTopup() {
+    try {
+        const response = await fetch(`${API_BASE}/crypto-wallets/my-wallets`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const wallets = await response.json();
+
+        const select = document.getElementById('topupWalletSelect');
+        select.innerHTML = '<option value="">Выберите кошелёк...</option>';
+
+        wallets.forEach(wallet => {
+            const option = document.createElement('option');
+            option.value = wallet.id;
+            option.textContent = `${wallet.walletType} - ${wallet.walletAddress}`;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading wallets for topup:', error);
     }
 }
 
@@ -568,9 +597,19 @@ async function loadWalletsData() {
             return;
         }
 
-        let wallets = await fetch(`${API_BASE}/crypto-wallets`, { headers }).then(r => r.json());
+        // Сначала вызываем ensureWallet для проверки и создания кошелька
+        await fetch(`${API_BASE}/crypto-wallets/ensure`, {
+            method: 'POST',
+            headers
+        });
 
+        // Затем загружаем кошельки
+        const res = await fetch(`${API_BASE}/crypto-wallets`, { headers });
+        if (res.status === 401) return logout();
+        let wallets = await res.json();
+        if (!Array.isArray(wallets)) wallets = [];
         renderWallets(wallets);
+        showToast('Кошельки обновлены', 'success');
     } catch (error) {
         console.error('Error loading wallets data:', error);
         showToast('Ошибка загрузки кошельков', 'danger');
@@ -632,11 +671,58 @@ async function loadTransactionsData() {
 
 async function loadNewsData() {
     try {
-        const news = await fetch(`${API_BASE}/news-posts`).then(r => r.json());
+        const res = await fetch(`${API_BASE}/news-posts`);
+        if (res.status === 401) return logout();
+        const response = await res.json();
+        // Handle paginated response: { items: [...] } or direct array
+        let news = [];
+        if (response && Array.isArray(response.items)) {
+            news = response.items;
+        } else if (Array.isArray(response)) {
+            news = response;
+        }
         renderNews(news);
     } catch (error) {
         console.error('Error loading news data:', error);
         showToast('Ошибка загрузки новостей', 'danger');
+        renderNews([]);
+    }
+}
+
+async function fetchNews() {
+    try {
+        showToast('Загрузка новостей...', 'info');
+        const response = await fetch(`${API_BASE}/news-posts/sync`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const contentType = response.headers.get('content-type') || '';
+        let result = null;
+        let rawText = '';
+
+        if (contentType.includes('application/json')) {
+            result = await response.json();
+        } else {
+            rawText = await response.text();
+        }
+
+        if (response.ok) {
+            showToast((result && result.message) ? result.message : 'Новости обновлены', 'success');
+            await loadNewsData();
+        } else {
+            const msg = (result && (result.message || result.error))
+                ? (result.message || result.error)
+                : (rawText ? rawText : 'Ошибка синхронизации');
+            console.error('News sync failed:', response.status, msg, result);
+            showToast(msg, 'danger');
+        }
+    } catch (error) {
+        console.error('Error fetching news:', error);
+        showToast('Ошибка синхронизации новостей', 'danger');
     }
 }
 
@@ -647,6 +733,209 @@ async function loadPredictionsData() {
     } catch (error) {
         console.error('Error loading predictions data:', error);
         showToast('Ошибка загрузки прогнозов', 'danger');
+    }
+}
+
+async function updatePredictions() {
+    try {
+        showToast('Обновление данных рынка...', 'info');
+        const response = await fetch(`${API_BASE}/crypto-currencies/market-data`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        const result = await response.json();
+
+        if (response.ok) {
+            showToast(result.message, 'success');
+            await loadTopCryptosChart();
+            await updateCryptoTable();
+        } else {
+            showToast(result.message || 'Ошибка обновления', 'danger');
+        }
+    } catch (error) {
+        console.error('Error updating predictions:', error);
+        showToast('Ошибка обновления данных', 'danger');
+    }
+}
+
+async function loadTopCryptosChart() {
+    try {
+        const cryptos = await fetch(`${API_BASE}/crypto-currencies`).then(r => r.json());
+        const top10 = cryptos.slice(0, 10);
+
+        const ctx = document.getElementById('marketCapChart');
+        if (ctx) {
+            if (window.marketCapChartInstance) {
+                window.marketCapChartInstance.destroy();
+            }
+
+            window.marketCapChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: top10.map(c => c.symbol),
+                    datasets: [{
+                        label: 'Рыночная капитализация (USD)',
+                        data: top10.map(c => c.marketCap),
+                        backgroundColor: 'rgba(54, 162, 235, 0.8)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    aspectRatio: 2,
+                    animation: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error loading top cryptos chart:', error);
+    }
+}
+
+async function loadPointsChart() {
+    try {
+        if (!authToken) {
+            console.log('No auth token, skipping chart points load');
+            return;
+        }
+        const response = await fetch(`${API_BASE}/chart-points`, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        const points = await response.json();
+
+        const ctx = document.getElementById('pointsChart');
+        if (ctx) {
+            if (window.pointsChartInstance) {
+                window.pointsChartInstance.destroy();
+            }
+
+            const pointData = points.map(p => ({
+                x: new Date(p.timestamp).getTime(),
+                y: parseFloat(p.price)
+            }));
+
+            window.pointsChartInstance = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: 'Точки на графике',
+                        data: pointData,
+                        backgroundColor: 'rgba(255, 99, 132, 0.8)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        pointRadius: 8,
+                        pointHoverRadius: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    aspectRatio: 2,
+                    animation: false,
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            position: 'bottom',
+                            title: {
+                                display: true,
+                                text: 'Время'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Цена'
+                            }
+                        }
+                    },
+                    onClick: async (event, elements) => {
+                        if (elements.length > 0) {
+                            const point = elements[0];
+                            const dataPoint = pointData[point.index];
+                            const note = prompt('Добавить заметку к точке:', '');
+                            if (note !== null) {
+                                await saveChartPoint(dataPoint.x, dataPoint.y, note);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error loading points chart:', error);
+    }
+}
+
+async function saveChartPoint(timestamp, price, note) {
+    try {
+        const response = await fetch(`${API_BASE}/chart-points`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                symbol: 'BTC',
+                price: price,
+                timestamp: new Date(timestamp).toISOString(),
+                note: note
+            })
+        });
+
+        if (response.ok) {
+            showToast('Точка сохранена', 'success');
+            await loadPointsChart();
+        } else {
+            showToast('Ошибка сохранения точки', 'danger');
+        }
+    } catch (error) {
+        console.error('Error saving chart point:', error);
+        showToast('Ошибка сохранения точки', 'danger');
+    }
+}
+
+let cryptoTableInterval;
+
+async function updateCryptoTable() {
+    try {
+        const cryptos = await fetch(`${API_BASE}/crypto-currencies`).then(r => r.json());
+        const top10 = cryptos.slice(0, 10);
+
+        const tbody = document.getElementById('cryptoTableAuto');
+        if (tbody) {
+            tbody.innerHTML = top10.map(c => `
+                <tr>
+                    <td><strong>${c.symbol}</strong></td>
+                    <td>${c.name}</td>
+                    <td>$${parseFloat(c.currentPrice).toFixed(2)}</td>
+                    <td>$${(c.marketCap / 1e9).toFixed(2)}B</td>
+                    <td>$${(c.volume24h / 1e9).toFixed(2)}B</td>
+                </tr>
+            `).join('');
+        }
+    } catch (error) {
+        console.error('Error updating crypto table:', error);
+    }
+}
+
+function startCryptoTableAutoUpdate() {
+    updateCryptoTable();
+    cryptoTableInterval = setInterval(updateCryptoTable, 5 * 60 * 1000); // 5 минут
+}
+
+function stopCryptoTableAutoUpdate() {
+    if (cryptoTableInterval) {
+        clearInterval(cryptoTableInterval);
+        cryptoTableInterval = null;
     }
 }
 
@@ -692,17 +981,61 @@ function renderWallets(wallets) {
     }
 
     container.innerHTML = wallets.map(w => {
-        const balanceDisplay = w.balance === null ? '<span class="text-muted">Скрыто</span>' : parseFloat(w.balance).toFixed(8);
         const ownerName = w.user ? w.user.username : 'Неизвестно';
+
+        // Check if balances are hidden
+        const isHidden = w.coinBalance === null && w.btcBalance === null && w.usdBalance === null && w.rubBalance === null;
+
+        if (isHidden) {
+            return `
+            <div class="col-md-4 mb-4">
+                <div class="wallet-card">
+                    <h5>${w.walletType}</h5>
+                    <div class="wallet-address">${w.walletAddress}</div>
+                    <div class="wallet-balances mt-3">
+                        <div class="text-center text-muted">
+                            <i class="bi bi-lock"></i> Балансы скрыты
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <small>Владелец: ${ownerName}</small><br>
+                        <small>ID: ${w.id}</small>
+                    </div>
+                </div>
+            </div>
+        `;
+        }
+
+        const coinBalance = w.coinBalance !== null ? parseFloat(w.coinBalance).toFixed(8) : '0.00000000';
+        const btcBalance = w.btcBalance !== null ? parseFloat(w.btcBalance).toFixed(8) : '0.00000000';
+        const usdBalance = w.usdBalance !== null ? parseFloat(w.usdBalance).toFixed(2) : '0.00';
+        const rubBalance = w.rubBalance !== null ? parseFloat(w.rubBalance).toFixed(2) : '0.00';
+
         return `
         <div class="col-md-4 mb-4">
             <div class="wallet-card">
-                <h5>${w.currencyCode}</h5>
-                <div class="wallet-balance">${balanceDisplay}</div>
+                <h5>${w.walletType}</h5>
                 <div class="wallet-address">${w.walletAddress}</div>
+                <div class="wallet-balances mt-3">
+                    <div class="balance-item">
+                        <span class="balance-label">COIN:</span>
+                        <span class="balance-value">${coinBalance}</span>
+                    </div>
+                    <div class="balance-item">
+                        <span class="balance-label">BTC:</span>
+                        <span class="balance-value">${btcBalance}</span>
+                    </div>
+                    <div class="balance-item">
+                        <span class="balance-label">USD:</span>
+                        <span class="balance-value">$${usdBalance}</span>
+                    </div>
+                    <div class="balance-item">
+                        <span class="balance-label">RUB:</span>
+                        <span class="balance-value">₽${rubBalance}</span>
+                    </div>
+                </div>
                 <div class="mt-3">
                     <small>Владелец: ${ownerName}</small><br>
-                    <small>Тип: ${w.walletType}</small><br>
                     <small>ID: ${w.id}</small>
                 </div>
             </div>
@@ -750,34 +1083,37 @@ function renderTransactions(transactions) {
 
 function renderNews(news) {
     const container = document.getElementById('newsContainer');
+    if (!container) return;
 
-    if (news.length === 0) {
-        container.innerHTML = '<div class="col-12 text-center"><p>Нет новостей</p></div>';
+    if (!news || news.length === 0) {
+        container.innerHTML = `
+            <div class="col-12 text-center py-5">
+                <i class="bi bi-newspaper fs-1 text-muted"></i>
+                <p class="mt-2 text-muted">Нет новостей. Нажмите «Обновить новости», чтобы загрузить.</p>
+            </div>`;
         return;
     }
 
-    container.innerHTML = news.map(n => `
-        <div class="col-md-6 mb-4">
-            <div class="card news-card">
-                <div class="card-body">
-                    <h5 class="card-title">${n.title}</h5>
-                    <p class="card-text">${n.content.substring(0, 150)}...</p>
-                    <div class="news-meta">
-                        <small>
-                            <i class="bi bi-calendar"></i> ${new Date(n.createdAt).toLocaleDateString()}
-                            <i class="bi bi-eye ms-2"></i> ${n.viewCount} просмотров
-                            <i class="bi bi-tag ms-2"></i> ${n.postType}
-                        </small>
-                    </div>
-                    <div class="mt-2">
-                        <span class="badge ${n.isPublished ? 'bg-success' : 'bg-secondary'}">
-                            ${n.isPublished ? 'Опубликовано' : 'Черновик'}
-                        </span>
+    container.innerHTML = news.map(n => {
+        const content = n.content ? n.content.substring(0, 160) + '...' : '';
+        const date = n.createdAt ? new Date(n.createdAt).toLocaleDateString('ru-RU') : '';
+        return `
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card news-card h-100 shadow-sm">
+                ${n.imageUrl ? `<img src="${n.imageUrl}" class="card-img-top" alt="${n.title}" style="height:180px;object-fit:cover;" onerror="this.style.display='none'">` : ''}
+                <div class="card-body d-flex flex-column">
+                    <h6 class="card-title">${n.title}</h6>
+                    ${content ? `<p class="card-text text-muted small flex-grow-1">${content}</p>` : ''}
+                    <div class="mt-auto pt-2 d-flex justify-content-between align-items-center">
+                        <small class="text-muted">${date}</small>
+                        ${n.url ? `<a href="${n.url}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">
+                            Читать далее <i class="bi bi-box-arrow-up-right"></i>
+                        </a>` : ''}
                     </div>
                 </div>
             </div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 }
 
 function renderPredictions(predictions) {
@@ -841,6 +1177,8 @@ function loadCharts(crypto, transactions) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            aspectRatio: 2,
+            animation: false,
             scales: {
                 y: {
                     beginAtZero: true,
@@ -907,6 +1245,8 @@ function loadCharts(crypto, transactions) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            aspectRatio: 2,
+            animation: false,
             plugins: {
                 legend: {
                     labels: {
@@ -943,6 +1283,121 @@ function getPredictionIcon(type) {
 function showAddCryptoModal() {
     const modal = new bootstrap.Modal(document.getElementById('addCryptoModal'));
     modal.show();
+}
+
+function showCreateWalletModal() {
+    const modal = new bootstrap.Modal(document.getElementById('createWalletModal'));
+    modal.show();
+}
+
+async function createWallet() {
+    try {
+        const walletType = document.getElementById('newWalletType').value;
+
+        if (!walletType) {
+            showToast('Выберите тип кошелька', 'danger');
+            return;
+        }
+
+        const response = await fetch(`${API_BASE}/crypto-wallets`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify({ walletType })
+        });
+
+        if (response.ok) {
+            showToast('Кошелёк успешно создан', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('createWalletModal')).hide();
+            loadWalletsData();
+        } else {
+            const error = await response.json();
+            showToast(error.message || 'Ошибка создания кошелька', 'danger');
+        }
+    } catch (error) {
+        console.error('Error creating wallet:', error);
+        showToast('Ошибка создания кошелька', 'danger');
+    }
+}
+
+async function topupWallet() {
+    try {
+        const walletId = document.getElementById('topupWalletSelect').value;
+        const currency = document.getElementById('topupWalletCurrency').value;
+        const amount = parseFloat(document.getElementById('topupWalletAmount').value);
+
+        if (!walletId || !currency || isNaN(amount) || amount <= 0) {
+            showToast('Заполните все поля корректно', 'danger');
+            return;
+        }
+
+        // Get current user's wallet to verify ownership
+        const wallets = await fetch(`${API_BASE}/crypto-wallets/my-wallets`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        }).then(r => r.json());
+
+        const isOwnWallet = wallets.some(w => w.id == walletId);
+        if (!isOwnWallet) {
+            showToast('Можно пополнить только свой кошелёк!', 'danger');
+            return;
+        }
+
+        // Get current wallet data
+        const wallet = await fetch(`${API_BASE}/crypto-wallets/${walletId}`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        }).then(r => r.json());
+
+        // Check if user has enough balance in profile
+        const userResponse = await fetch(`${API_BASE}/users/me`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const user = await userResponse.json();
+
+        let userBalance = 0;
+        switch (currency) {
+            case 'COIN': userBalance = parseFloat(user.coinBalance || 0); break;
+            case 'BTC': userBalance = parseFloat(user.btcBalance || 0); break;
+            case 'USD': userBalance = parseFloat(user.usdBalance || 0); break;
+            case 'RUB': userBalance = parseFloat(user.rubBalance || 0); break;
+        }
+
+        if (userBalance < amount) {
+            showToast('Недостаточно средств в профиле', 'danger');
+            return;
+        }
+
+        // Update wallet balance
+        const updateData = {};
+        switch (currency) {
+            case 'COIN': updateData.coinBalance = parseFloat(wallet.coinBalance || 0) + amount; break;
+            case 'BTC': updateData.btcBalance = parseFloat(wallet.btcBalance || 0) + amount; break;
+            case 'USD': updateData.usdBalance = parseFloat(wallet.usdBalance || 0) + amount; break;
+            case 'RUB': updateData.rubBalance = parseFloat(wallet.rubBalance || 0) + amount; break;
+        }
+
+        const updateResponse = await fetch(`${API_BASE}/crypto-wallets/${walletId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            },
+            body: JSON.stringify(updateData)
+        });
+
+        if (updateResponse.ok) {
+            showToast(`Кошелёк успешно пополнен на ${amount} ${currency}`, 'success');
+            document.getElementById('topupWalletForm').reset();
+            loadWalletsData();
+        } else {
+            const error = await updateResponse.json();
+            showToast(error.message || 'Ошибка пополнения кошелька', 'danger');
+        }
+    } catch (error) {
+        console.error('Error topping up wallet:', error);
+        showToast('Ошибка пополнения кошелька', 'danger');
+    }
 }
 
 function showAddWalletModal() {
@@ -1441,4 +1896,236 @@ async function register() {
     }
 }
 
-// Функции updateTopupCoins и topupBalance удалены, так как самопополнение заменено на QR-код
+// Predictions Logic
+let marketChart = null;
+let pointsChart = null;
+let countdownInterval = null;
+
+async function loadMarketCharts() {
+    try {
+        const response = await fetch('https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC,ETH,SOL,BNB,XRP&tsyms=USD');
+        const data = await response.json();
+
+        if (data.RAW) {
+            const labels = Object.keys(data.RAW);
+            const prices = labels.map(sym => data.RAW[sym].USD.PRICE);
+            const changes = labels.map(sym => data.RAW[sym].USD.CHANGEPCT24HOUR);
+
+            renderMarketChart(labels, prices, changes);
+            updateMarketTable(data.RAW);
+        }
+        loadPointsChart();
+    } catch (error) {
+        console.error('Error loading market charts:', error);
+    }
+}
+
+function renderMarketChart(labels, prices, changes) {
+    const ctx = document.getElementById('marketLiveChart').getContext('2d');
+    if (!ctx) return;
+    if (marketChart) marketChart.destroy();
+
+    marketChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Цена (USD)',
+                data: prices,
+                backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            aspectRatio: 2,
+            animation: false
+        }
+    });
+}
+
+async function loadPointsChart() {
+    const selectEl = document.getElementById('pointCurrencySelect');
+    if (!selectEl) return;
+    const symbol = selectEl.value;
+    try {
+        const historyRes = await fetch(`https://min-api.cryptocompare.com/data/v2/histohour?fsym=${symbol}&tsym=USD&limit=24`);
+        const historyData = await historyRes.json();
+
+        const labels = historyData.Data.Data.map(d => new Date(d.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+        const prices = historyData.Data.Data.map(d => d.close);
+
+        // Only fetch saved points if the user is logged in
+        let savedPoints = [];
+        if (authToken) {
+            try {
+                const pointsRes = await fetch(`${API_BASE}/chart-points?symbol=${symbol}`, {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                if (pointsRes.ok) {
+                    const data = await pointsRes.json();
+                    savedPoints = Array.isArray(data) ? data : [];
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        renderPointsChart(symbol, labels, prices, savedPoints);
+    } catch (error) {
+        console.error('Error loading points chart:', error);
+    }
+}
+
+function renderPointsChart(symbol, labels, prices, savedPoints) {
+    const canvas = document.getElementById('pointsChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (pointsChart) pointsChart.destroy();
+
+    const pointsData = savedPoints.map(p => {
+        const timeLabel = new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        // Match the label in the history data
+        const labelIndex = labels.indexOf(timeLabel);
+        if (labelIndex !== -1) {
+            return { x: timeLabel, y: parseFloat(p.price) };
+        }
+        return null;
+    }).filter(p => p !== null);
+
+    pointsChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: `${symbol} Цена`,
+                    data: prices,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    fill: false,
+                    tension: 0.1
+                },
+                {
+                    label: 'Ваши поинты',
+                    data: pointsData,
+                    backgroundColor: 'red',
+                    pointRadius: 8,
+                    type: 'scatter',
+                    showLine: false
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            aspectRatio: 2,
+            animation: false,
+            onClick: (e) => {
+                if (!authToken) {
+                    showToast('Войдите, чтобы ставить поинты', 'warning');
+                    return;
+                }
+                const activePoints = pointsChart.getElementsAtEventForMode(e, 'index', { intersect: false }, true);
+                if (activePoints.length > 0) {
+                    const index = activePoints[0].index;
+                    const price = pointsChart.data.datasets[0].data[index];
+                    const timeLabel = pointsChart.data.labels[index];
+                    const now = new Date();
+                    const [hours, minutes] = timeLabel.split(':');
+                    const pointDate = new Date(now.setHours(parseInt(hours), parseInt(minutes), 0, 0));
+
+                    saveChartPoint(symbol, price, pointDate);
+                }
+            }
+        }
+    });
+}
+
+function addCurrentPoint() {
+    if (!authToken) {
+        showToast('Войдите, чтобы ставить поинты', 'warning');
+        return;
+    }
+    const symbol = document.getElementById('pointCurrencySelect').value;
+    if (!pointsChart || !pointsChart.data.datasets[0].data.length) {
+        showToast('График еще не загружен', 'info');
+        return;
+    }
+    // Get the latest price point (last element in the labels/data)
+    const lastIndex = pointsChart.data.labels.length - 1;
+    const price = pointsChart.data.datasets[0].data[lastIndex];
+    const timeLabel = pointsChart.data.labels[lastIndex];
+
+    const now = new Date();
+    const [hours, minutes] = timeLabel.split(':');
+    const pointDate = new Date(now.setHours(parseInt(hours), parseInt(minutes), 0, 0));
+
+    saveChartPoint(symbol, price, pointDate);
+}
+
+async function saveChartPoint(symbol, price, timestamp) {
+    try {
+        const response = await fetch(`${API_BASE}/chart-points`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ symbol, price, timestamp })
+        });
+
+        if (response.ok) {
+            showToast('Поинт сохранен!', 'success');
+            loadPointsChart();
+        }
+    } catch (error) {
+        console.error('Error saving point:', error);
+    }
+}
+
+function updateMarketTable(raw) {
+    const body = document.getElementById('liveMarketTableBody');
+    if (!body) return;
+
+    body.innerHTML = Object.keys(raw).map(sym => {
+        const d = raw[sym].USD;
+        return `
+            <tr>
+                <td><strong>${sym}</strong></td>
+                <td>$${d.PRICE.toLocaleString()}</td>
+                <td class="${d.CHANGEPCT24HOUR >= 0 ? 'text-success' : 'text-danger'}">
+                    ${d.CHANGEPCT24HOUR.toFixed(2)}%
+                </td>
+                <td>$${(d.MKTCAP / 1e9).toFixed(2)}B</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-info" onclick="window.open('https://www.cryptocompare.com/coins/${sym.toLowerCase()}/overview')">
+                        Инфо
+                    </button>
+                    ${authToken ? `
+                        <button class="btn btn-sm btn-outline-primary" onclick="document.getElementById('pointCurrencySelect').value='${sym}'; loadPointsChart(); showToast('Выбрана валюта ${sym}', 'info');">
+                            Анализ
+                        </button>
+                    ` : ''}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function startUpdateTimer() {
+    if (countdownInterval) clearInterval(countdownInterval);
+
+    let timeLeft = 300; // 5 minutes
+    const badge = document.getElementById('updateCountdown');
+
+    countdownInterval = setInterval(() => {
+        timeLeft--;
+        if (timeLeft <= 0) {
+            timeLeft = 300;
+            loadMarketCharts();
+        }
+        const mins = Math.floor(timeLeft / 60);
+        const secs = timeLeft % 60;
+        if (badge) badge.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }, 1000);
+}

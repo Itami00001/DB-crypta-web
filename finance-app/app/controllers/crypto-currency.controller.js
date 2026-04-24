@@ -2,6 +2,7 @@ const db = require("../models");
 const CryptoCurrency = db.cryptoCurrencies;
 const UserPrediction = db.userPredictions;
 const CryptoWallet = db.cryptoWallets;
+const https = require('https');
 
 // Create a new CryptoCurrency
 exports.create = (req, res) => {
@@ -208,4 +209,93 @@ exports.deleteAll = (req, res) => {
         message: err.message || "Some error occurred while removing all crypto currencies."
       });
     });
+};
+
+// Get market data from CryptoCompare API
+exports.getMarketData = async (req, res) => {
+  try {
+    const apiKey = process.env.CRYPTO_COMPARE_API_KEY;
+    const options = {
+      hostname: 'min-api.cryptocompare.com',
+      path: '/data/top/mktcapfull?tsym=USD&limit=20',
+      method: 'GET',
+      headers: {
+        'Authorization': `Apikey ${apiKey}`
+      }
+    };
+
+    const marketReq = https.request(options, (marketRes) => {
+      let data = '';
+
+      marketRes.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      marketRes.on('end', async () => {
+        try {
+          const response = JSON.parse(data);
+          
+          if (response.Response === 'Success' && response.Data) {
+            const marketData = response.Data;
+            let updatedCount = 0;
+
+            for (const item of marketData) {
+              const coinInfo = item.CoinInfo;
+              const raw = item.RAW;
+              
+              if (coinInfo && raw && raw.USD) {
+                const existing = await CryptoCurrency.findOne({
+                  where: { symbol: coinInfo.Name }
+                });
+
+                const currencyData = {
+                  symbol: coinInfo.Name,
+                  name: coinInfo.FullName,
+                  currentPrice: raw.USD.PRICE,
+                  marketCap: raw.USD.MKTCAP,
+                  volume24h: raw.USD.TOTALVOLUME24HTO,
+                  iconUrl: coinInfo.ImageUrl ? `https://www.cryptocompare.com${coinInfo.ImageUrl}` : null,
+                  isActive: true
+                };
+
+                if (existing) {
+                  await existing.update(currencyData);
+                  updatedCount++;
+                } else {
+                  await CryptoCurrency.create(currencyData);
+                  updatedCount++;
+                }
+              }
+            }
+
+            res.send({
+              message: `Successfully updated ${updatedCount} cryptocurrencies`,
+              total: marketData.length,
+              updated: updatedCount
+            });
+          } else {
+            res.status(500).send({
+              message: 'Failed to fetch market data from CryptoCompare'
+            });
+          }
+        } catch (error) {
+          res.status(500).send({
+            message: error.message || 'Error parsing market data'
+          });
+        }
+      });
+    });
+
+    marketReq.on('error', (error) => {
+      res.status(500).send({
+        message: error.message || 'Error fetching market data from CryptoCompare'
+      });
+    });
+
+    marketReq.end();
+  } catch (error) {
+    res.status(500).send({
+      message: error.message || 'Error getting market data'
+    });
+  }
 };

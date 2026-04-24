@@ -70,6 +70,7 @@ require("./app/routes/comment.routes")(app);
 require("./app/routes/user-prediction.routes")(app);
 require("./app/routes/like.routes")(app);
 require("./app/routes/analytics.routes")(app);
+require("./app/routes/chart-point.routes")(app);
 
 const db = require("./app/models");
 const bcrypt = require("bcryptjs");
@@ -93,41 +94,142 @@ const startApp = async () => {
         await db.sequelize.query(`ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "${col.name}" ${col.type} DEFAULT ${col.default}`);
         console.log(`Column ${col.name} verified/added.`);
       } catch (e) {
-        console.log(`Note: ${col.name} check for table "users" resulted in: ${e.message}`);
-        // Try again with lowercase table name without quotes just in case
-        try {
-          await db.sequelize.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${col.name} ${col.type} DEFAULT ${col.default}`);
-        } catch (e2) { }
+        console.log(`Note: ${col.name} column check handled.`);
       }
+    }
+
+    // Manual check for news_posts columns - use TEXT for long URLs
+    try {
+      // Add columns if missing (as TEXT)
+      await db.sequelize.query(`ALTER TABLE "news_posts" ADD COLUMN IF NOT EXISTS "url" TEXT`);
+      await db.sequelize.query(`ALTER TABLE "news_posts" ADD COLUMN IF NOT EXISTS "image_url" TEXT`);
+      // Alter existing VARCHAR columns to TEXT if they were created as VARCHAR
+      await db.sequelize.query(`ALTER TABLE "news_posts" ALTER COLUMN "url" TYPE TEXT`);
+      await db.sequelize.query(`ALTER TABLE "news_posts" ALTER COLUMN "image_url" TYPE TEXT`);
+      // Drop the unique constraint on url if it exists (long TEXT can't be indexed uniquely in PG)
+      await db.sequelize.query(`
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'news_posts_url_unique'
+          ) THEN
+            ALTER TABLE "news_posts" DROP CONSTRAINT "news_posts_url_unique";
+          END IF;
+        END $$;
+      `);
+      console.log("NewsPost url/image_url columns set to TEXT.");
+    } catch (e) {
+      console.log(`Note: news_posts column migration: ${e.message}`);
+    }
+
+    // Manual migration for crypto_wallets - add new balance fields
+    try {
+      const walletColumnsToAdd = [
+        { name: 'coin_balance', type: 'DECIMAL(20,8)', default: '0' },
+        { name: 'btc_balance', type: 'DECIMAL(20,8)', default: '0' },
+        { name: 'usd_balance', type: 'DECIMAL(20,2)', default: '0' },
+        { name: 'rub_balance', type: 'DECIMAL(20,2)', default: '0' }
+      ];
+
+      for (const col of walletColumnsToAdd) {
+        try {
+          await db.sequelize.query(`ALTER TABLE "crypto_wallets" ADD COLUMN IF NOT EXISTS "${col.name}" ${col.type} DEFAULT ${col.default}`);
+          console.log(`CryptoWallet column ${col.name} verified/added.`);
+        } catch (e) {
+          console.log(`Note: crypto_wallets column ${col.name} check handled.`);
+        }
+      }
+
+      // Migrate data from old balance/currencyCode to new fields
+      try {
+        // Migrate COIN wallets
+        await db.sequelize.query(`
+          UPDATE "crypto_wallets" 
+          SET "coin_balance" = "balance" 
+          WHERE "currency_code" = 'COIN' AND "coin_balance" = 0
+        `);
+
+        // Migrate BTC wallets
+        await db.sequelize.query(`
+          UPDATE "crypto_wallets" 
+          SET "btc_balance" = "balance" 
+          WHERE "currency_code" = 'BTC' AND "btc_balance" = 0
+        `);
+
+        // Migrate USD wallets
+        await db.sequelize.query(`
+          UPDATE "crypto_wallets" 
+          SET "usd_balance" = "balance" 
+          WHERE "currency_code" = 'USD' AND "usd_balance" = 0
+        `);
+
+        // Migrate RUB wallets
+        await db.sequelize.query(`
+          UPDATE "crypto_wallets" 
+          SET "rub_balance" = "balance" 
+          WHERE "currency_code" = 'RUB' AND "rub_balance" = 0
+        `);
+
+        console.log("CryptoWallet data migration completed.");
+      } catch (e) {
+        console.log(`Note: crypto_wallets data migration handled: ${e.message}`);
+      }
+    } catch (e) {
+      console.log(`Note: crypto_wallets migration check handled: ${e.message}`);
     }
 
     await db.sequelize.sync({ alter: true });
     console.log("Synced db successfully.");
 
-    // Seed admin user
+    console.log("Starting user seeding...");
+    // Seed users
     try {
       const User = db.users;
-      const adminUser = await User.findOne({ where: { username: "admin" } });
-
-      if (!adminUser) {
-        const hashedPassword = await bcrypt.hash("adminadmin", 10);
-        await User.create({
-          username: "admin",
-          email: "admin@example.com",
-          passwordHash: hashedPassword,
-          isAdmin: true,
-          coinBalance: 0,
-          btcBalance: 0,
-          usdBalance: 0,
-          rubBalance: 0
-        });
-        console.log("Admin user created.");
-      } else if (!adminUser.isAdmin) {
-        await adminUser.update({ isAdmin: true });
-        console.log("Admin rights granted.");
+      const usersToSeed = [
+        { username: "admin", email: "admin@gmail.com", password: "adminadmin", isAdmin: true },
+        { username: "test", email: "test@gmail.com", password: "testtest", isAdmin: false },
+        { username: "test1", email: "test1@gmail.com", password: "test1test1", isAdmin: false },
+        { username: "test2", email: "test2@gmail.com", password: "test2test2", isAdmin: false },
+      ];
+      for (const u of usersToSeed) {
+        const existing = await User.findOne({ where: { username: u.username } });
+        if (!existing) {
+          const hash = await bcrypt.hash(u.password, 10);
+          await User.create({
+            username: u.username, email: u.email, passwordHash: hash,
+            isAdmin: u.isAdmin, coinBalance: 0, btcBalance: 0, usdBalance: 0, rubBalance: 0
+          });
+          console.log(`User '${u.username}' created.`);
+        } else if (u.isAdmin && !existing.isAdmin) {
+          await existing.update({ isAdmin: true });
+          console.log(`Admin flag set for '${u.username}'.`);
+        }
       }
     } catch (err) {
-      console.error("Admin seeding error:", err);
+      console.error("User seeding error:", err);
+    }
+
+    console.log("Starting crypto seeding...");
+    // Seed default cryptocurrencies
+    try {
+      const Crypto = db.cryptoCurrencies;
+      const cryptosToSeed = [
+        { symbol: "BTC", name: "Bitcoin", currentPrice: 68000.00, marketCap: 1340000000000, volume24h: 28000000000, iconUrl: "https://s2.coinmarketcap.com/static/img/coins/64x64/1.png", isActive: true },
+        { symbol: "ETH", name: "Ethereum", currentPrice: 3500.00, marketCap: 420000000000, volume24h: 14000000000, iconUrl: "https://s2.coinmarketcap.com/static/img/coins/64x64/1027.png", isActive: true },
+        { symbol: "SOL", name: "Solana", currentPrice: 175.00, marketCap: 80000000000, volume24h: 3000000000, iconUrl: "https://s2.coinmarketcap.com/static/img/coins/64x64/5426.png", isActive: true },
+        { symbol: "BNB", name: "Binance Coin", currentPrice: 610.00, marketCap: 90000000000, volume24h: 1500000000, iconUrl: "https://s2.coinmarketcap.com/static/img/coins/64x64/1839.png", isActive: true },
+        { symbol: "M", name: "Music COIN", currentPrice: 2.50, marketCap: 25000000, volume24h: 500000, iconUrl: "♪", description: "Music platform token", isActive: true },
+        { symbol: "R", name: "R COIN", currentPrice: 15.00, marketCap: 150000000, volume24h: 2000000, iconUrl: "®", description: "Royalty token", isActive: true },
+      ];
+      for (const c of cryptosToSeed) {
+        const existing = await Crypto.findOne({ where: { symbol: c.symbol } });
+        if (!existing) {
+          await Crypto.create(c);
+          console.log(`Crypto '${c.symbol}' created.`);
+        }
+      }
+    } catch (err) {
+      console.error("Crypto seeding error:", err);
     }
 
     const PORT = process.env.PORT || 6868;

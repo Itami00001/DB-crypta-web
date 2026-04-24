@@ -181,9 +181,8 @@ exports.adminTopup = async (req, res) => {
     }
 
     const CryptoWallet = db.cryptoWallets;
-    const balanceField = currency === 'RUB' ? 'rubBalance' : (currency === 'USD' ? 'usdBalance' : (currency === 'BTC' ? 'btcBalance' : 'coinBalance'));
 
-    // Update balance based on currency (Conversion: 1 COIN = 0.5 USD = 50 RUB)
+    // Update user balance based on currency
     switch (currency) {
       case 'COIN':
         await user.update({ coinBalance: parseFloat(user.coinBalance || 0) + parseFloat(amount) }, { transaction });
@@ -192,33 +191,39 @@ exports.adminTopup = async (req, res) => {
         await user.update({ btcBalance: parseFloat(user.btcBalance || 0) + parseFloat(amount) }, { transaction });
         break;
       case 'USD':
-        const coinFromUsd = parseFloat(amount) / 0.5;
-        await user.update({ coinBalance: parseFloat(user.coinBalance || 0) + coinFromUsd }, { transaction });
+        await user.update({ usdBalance: parseFloat(user.usdBalance || 0) + parseFloat(amount) }, { transaction });
         break;
       case 'RUB':
-        const coinFromRub = parseFloat(amount) / 50;
-        await user.update({ coinBalance: parseFloat(user.coinBalance || 0) + coinFromRub }, { transaction });
+        await user.update({ rubBalance: parseFloat(user.rubBalance || 0) + parseFloat(amount) }, { transaction });
         break;
       default:
         await transaction.rollback();
         return res.status(400).send({ message: "Invalid currency" });
     }
 
-    // Синхронизируем кошелек для указанной валюты
+    // Sync wallet with new structure
     let wallet = await CryptoWallet.findOne({
-      where: { userId: userId, currencyCode: currency },
+      where: { userId: userId },
       transaction
     });
     if (!wallet) {
       wallet = await CryptoWallet.create({
         userId: userId,
-        walletAddress: `${currency}_${userId}_${Date.now()}`,
-        walletType: 'internal',
-        balance: parseFloat(user[balanceField]),
-        currencyCode: currency
+        walletAddress: `wallet_${user.username}_${Date.now()}`,
+        walletType: 'default',
+        coinBalance: user.coinBalance || 0,
+        btcBalance: user.btcBalance || 0,
+        usdBalance: user.usdBalance || 0,
+        rubBalance: user.rubBalance || 0,
+        isActive: true
       }, { transaction });
     } else {
-      await wallet.update({ balance: parseFloat(user[balanceField]) }, { transaction });
+      await wallet.update({
+        coinBalance: user.coinBalance || 0,
+        btcBalance: user.btcBalance || 0,
+        usdBalance: user.usdBalance || 0,
+        rubBalance: user.rubBalance || 0
+      }, { transaction });
     }
 
     await transaction.commit();

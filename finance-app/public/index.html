@@ -241,9 +241,14 @@
         <div id="wallets" class="content-section" style="display: none;">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h2><i class="bi bi-wallet2"></i> Кошельки</h2>
-                <button class="btn btn-primary" onclick="loadWalletsData()">
-                    <i class="bi bi-arrow-clockwise"></i> Обновить
-                </button>
+                <div>
+                    <button class="btn btn-success me-2" onclick="showCreateWalletModal()">
+                        <i class="bi bi-plus"></i> Создать кошелёк
+                    </button>
+                    <button class="btn btn-primary" onclick="loadWalletsData()">
+                        <i class="bi bi-arrow-clockwise"></i> Обновить
+                    </button>
+                </div>
             </div>
 
             <div class="row" id="walletsContainer">
@@ -267,7 +272,7 @@
             <!-- Карточки для перевода и обмена -->
             <div class="row mb-4">
                 <!-- Перевод пользователю -->
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <div class="card">
                         <div class="card-header">
                             <h5><i class="bi bi-person-arrow-up"></i> Перевод пользователю</h5>
@@ -291,7 +296,8 @@
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label">Сумма</label>
-                                    <input type="number" step="0.00000001" class="form-control" id="transferAmount" required>
+                                    <input type="number" step="0.00000001" class="form-control" id="transferAmount"
+                                        required>
                                 </div>
                                 <button type="button" class="btn btn-primary" onclick="submitTransfer()">
                                     <i class="bi bi-send"></i> Отправить
@@ -302,7 +308,7 @@
                 </div>
 
                 <!-- Обмен валют -->
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <div class="card">
                         <div class="card-header">
                             <h5><i class="bi bi-arrow-left-right"></i> Обмен валют</h5>
@@ -329,13 +335,54 @@
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label">Сумма</label>
-                                    <input type="number" step="0.00000001" class="form-control" id="exchangeAmount" required>
+                                    <input type="number" step="0.00000001" class="form-control" id="exchangeAmount"
+                                        required>
                                 </div>
                                 <div class="alert alert-info">
                                     <small><strong>Курс:</strong> 1 COIN = 0.5 USD = 50 RUB</small>
                                 </div>
                                 <button type="button" class="btn btn-success" onclick="submitExchange()">
                                     <i class="bi bi-arrow-repeat"></i> Обменять
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Пополнить кошелёк -->
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="bi bi-plus-circle"></i> Пополнить кошелёк</h5>
+                        </div>
+                        <div class="card-body">
+                            <form id="topupWalletForm">
+                                <div class="mb-3">
+                                    <label class="form-label">Кошелёк</label>
+                                    <select class="form-select" id="topupWalletSelect" required>
+                                        <option value="">Выберите кошелёк...</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Валюта</label>
+                                    <select class="form-select" id="topupWalletCurrency" required>
+                                        <option value="COIN">COIN</option>
+                                        <option value="BTC">BTC</option>
+                                        <option value="USD">USD</option>
+                                        <option value="RUB">RUB</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Сумма</label>
+                                    <input type="number" step="0.00000001" class="form-control" id="topupWalletAmount"
+                                        required>
+                                </div>
+                                <div class="alert alert-warning">
+                                    <small><i class="bi bi-exclamation-triangle"></i> Можно пополнить только свой
+                                        кошелёк!</small>
+                                </div>
+                                <button type="button" class="btn btn-primary" onclick="topupWallet()">
+                                    <i class="bi bi-plus-circle"></i> Пополнить
                                 </button>
                             </form>
                         </div>
@@ -370,8 +417,8 @@
         <div id="news" class="content-section" style="display: none;">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <h2><i class="bi bi-newspaper"></i> Новости</h2>
-                <button class="btn btn-primary" onclick="showAddNewsModal()">
-                    <i class="bi bi-plus"></i> Добавить новость
+                <button class="btn btn-primary" onclick="fetchNews()">
+                    <i class="bi bi-arrow-clockwise"></i> Обновить новости
                 </button>
             </div>
 
@@ -387,16 +434,80 @@
         <!-- Прогнозы -->
         <div id="predictions" class="content-section" style="display: none;">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2><i class="bi bi-graph-up"></i> Прогнозы</h2>
-                <button class="btn btn-primary" onclick="showAddPredictionModal()">
-                    <i class="bi bi-plus"></i> Добавить прогноз
+                <h2><i class="bi bi-graph-up"></i> Прогнозы и Аналитика</h2>
+                <button class="btn btn-primary" onclick="loadMarketCharts()">
+                    <i class="bi bi-arrow-clockwise"></i> Обновить данные
                 </button>
             </div>
 
-            <div class="row" id="predictionsContainer">
-                <div class="col-12 text-center">
-                    <div class="spinner-border" role="status">
-                        <span class="visually-hidden">Загрузка...</span>
+            <div class="row">
+                <!-- Живой график рынка -->
+                <div class="col-lg-6 mb-4">
+                    <div class="card shadow-sm border-0 h-100">
+                        <div class="card-header bg-white border-0">
+                            <h5 class="mb-0">Рыночные тренды</h5>
+                        </div>
+                        <div class="card-body" style="height: 350px;">
+                            <canvas id="marketLiveChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- График поинтов -->
+                <div class="col-lg-6 mb-4">
+                    <div class="card shadow-sm border-0 h-100">
+                        <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Мои «Поинты»</h5>
+                            <select id="pointCurrencySelect" class="form-select form-select-sm w-auto"
+                                onchange="loadPointsChart()">
+                                <option value="BTC">Bitcoin (BTC)</option>
+                                <option value="ETH">Ethereum (ETH)</option>
+                                <option value="SOL">Solana (SOL)</option>
+                            </select>
+                        </div>
+                        <div class="card-body" style="height: 350px;">
+                            <div
+                                class="alert alert-light py-2 small mb-2 border text-muted d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-info-circle"></i> Кликните на график или:</span>
+                                <button class="btn btn-xs btn-primary py-0" onclick="addCurrentPoint()"
+                                    title="Поставить точку на текущую цену">
+                                    <i class="bi bi-pin-angle-fill"></i> Точка
+                                </button>
+                            </div>
+                            <canvas id="pointsChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Таблица курсов -->
+                <div class="col-12 mb-4">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Курсы валют в реальном времени</h5>
+                            <span id="nextUpdateBadge" class="badge bg-light text-dark border">
+                                Обновление через: <span id="updateCountdown">05:00</span>
+                            </span>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Валюта</th>
+                                            <th>Цена (USD)</th>
+                                            <th>Изм. 24ч (%)</th>
+                                            <th>Капитализация</th>
+                                            <th>Действия</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="liveMarketTableBody">
+                                        <tr>
+                                            <td colspan="5" class="text-center py-4">Загрузка данных...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -655,6 +766,39 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
                     <button type="button" class="btn btn-primary" onclick="addCrypto()">Добавить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно создания кошелька -->
+    <div class="modal fade" id="createWalletModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Создать кошелёк</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="createWalletForm">
+                        <div class="mb-3">
+                            <label class="form-label">Тип кошелька</label>
+                            <select class="form-select" id="newWalletType" required>
+                                <option value="hot">Горячий (Hot)</option>
+                                <option value="cold">Холодный (Cold)</option>
+                                <option value="exchange">Биржевой (Exchange)</option>
+                                <option value="hardware">Аппаратный (Hardware)</option>
+                            </select>
+                        </div>
+                        <div class="alert alert-info">
+                            <small><i class="bi bi-info-circle"></i> Новый кошелёк будет создан с текущими балансами
+                                вашего профиля.</small>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" onclick="createWallet()">Создать</button>
                 </div>
             </div>
         </div>

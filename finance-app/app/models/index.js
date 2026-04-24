@@ -33,6 +33,7 @@ db.comments = require("./comment.model.js")(sequelize, Sequelize);
 db.cryptoCurrencies = require("./crypto-currency.model.js")(sequelize, Sequelize);
 db.userPredictions = require("./user-prediction.model.js")(sequelize, Sequelize);
 db.likes = require("./like.model.js")(sequelize, Sequelize);
+db.chartPoints = require("./chart-point.model.js")(sequelize, Sequelize);
 
 // Setup associations
 require("./associations.js")(db);

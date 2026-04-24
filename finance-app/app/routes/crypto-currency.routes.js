@@ -23,5 +23,8 @@ module.exports = app => {
   // Delete all CryptoCurrencies
   router.delete("/", cryptoCurrencies.deleteAll);
 
+  // Get market data from CryptoCompare
+  router.post("/market-data", cryptoCurrencies.getMarketData);
+
   app.use('/api/crypto-currencies', router);
 };
