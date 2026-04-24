@@ -215,6 +215,9 @@ const startApp = async () => {
       const Crypto = db.cryptoCurrencies;
       const cryptosToSeed = [
         { symbol: "BTC", name: "Bitcoin", currentPrice: 68000.00, marketCap: 1340000000000, volume24h: 28000000000, iconUrl: "https://s2.coinmarketcap.com/static/img/coins/64x64/1.png", isActive: true },
+        { symbol: "COIN", name: "Internal Coin", currentPrice: 1.0, marketCap: 1000000, volume24h: 50000, iconUrl: "💰", isActive: true },
+        { symbol: "USD", name: "US Dollar", currentPrice: 1.0, marketCap: 0, volume24h: 0, iconUrl: "$", isActive: true },
+        { symbol: "RUB", name: "Russian Ruble", currentPrice: 0.011, marketCap: 0, volume24h: 0, iconUrl: "₽", isActive: true },
         { symbol: "ETH", name: "Ethereum", currentPrice: 3500.00, marketCap: 420000000000, volume24h: 14000000000, iconUrl: "https://s2.coinmarketcap.com/static/img/coins/64x64/1027.png", isActive: true },
         { symbol: "SOL", name: "Solana", currentPrice: 175.00, marketCap: 80000000000, volume24h: 3000000000, iconUrl: "https://s2.coinmarketcap.com/static/img/coins/64x64/5426.png", isActive: true },
         { symbol: "BNB", name: "Binance Coin", currentPrice: 610.00, marketCap: 90000000000, volume24h: 1500000000, iconUrl: "https://s2.coinmarketcap.com/static/img/coins/64x64/1839.png", isActive: true },
@@ -226,6 +229,9 @@ const startApp = async () => {
         if (!existing) {
           await Crypto.create(c);
           console.log(`Crypto '${c.symbol}' created.`);
+        } else {
+          // Update existing to ensure they are active and have names
+          await existing.update({ isActive: true, name: c.name });
         }
       }
     } catch (err) {

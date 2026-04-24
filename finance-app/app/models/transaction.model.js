@@ -6,10 +6,11 @@ module.exports = (sequelize, Sequelize) => {
     },
     currencyCode: {
       type: Sequelize.STRING,
-      allowNull: false
+      allowNull: false,
+      references: null
     },
     transactionType: {
-      type: Sequelize.ENUM('transfer', 'buy', 'sell', 'deposit', 'withdraw'),
+      type: Sequelize.ENUM('transfer', 'buy', 'sell', 'deposit', 'withdraw', 'exchange'),
       allowNull: false
     },
     status: {

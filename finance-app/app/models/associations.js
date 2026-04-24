@@ -15,7 +15,6 @@ module.exports = (db) => {
   // Transaction associations
   db.transactions.belongsTo(db.cryptoWallets, { foreignKey: 'fromWalletId', as: 'fromWallet' });
   db.transactions.belongsTo(db.cryptoWallets, { foreignKey: 'toWalletId', as: 'toWallet' });
-  db.transactions.belongsTo(db.cryptoCurrencies, { foreignKey: 'currencyCode', targetKey: 'symbol', as: 'currency' });
 
   // NewsPost associations
   db.newsPosts.belongsTo(db.users, { foreignKey: 'authorId', as: 'author' });

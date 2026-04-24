@@ -46,10 +46,10 @@ exports.findAll = (req, res) => {
 
   const whereClause = userId ? {
     [db.Sequelize.Op.or]: [
-      { fromWalletId: userId },
-      { toWalletId: userId }
+      { '$fromWallet.user_id$': userId },
+      { '$toWallet.user_id$': userId }
     ]
-  } : { id: -1 }; // Return nothing if not logged in
+  } : { id: -1 };
 
   Transaction.findAll({
     where: whereClause,
@@ -63,11 +63,6 @@ exports.findAll = (req, res) => {
         model: CryptoWallet,
         as: 'toWallet',
         attributes: ['id', 'walletAddress', 'walletType', 'currencyCode']
-      },
-      {
-        model: CryptoCurrency,
-        as: 'currency',
-        attributes: ['symbol', 'name', 'currentPrice']
       }
     ],
     order: [['createdAt', 'DESC']]
@@ -97,11 +92,6 @@ exports.findOne = (req, res) => {
         model: CryptoWallet,
         as: 'toWallet',
         attributes: ['id', 'walletAddress', 'walletType', 'currencyCode']
-      },
-      {
-        model: CryptoCurrency,
-        as: 'currency',
-        attributes: ['symbol', 'name', 'currentPrice']
       }
     ]
   })
@@ -142,11 +132,6 @@ exports.findByWalletId = (req, res) => {
         model: CryptoWallet,
         as: 'toWallet',
         attributes: ['id', 'walletAddress', 'walletType', 'currencyCode']
-      },
-      {
-        model: CryptoCurrency,
-        as: 'currency',
-        attributes: ['symbol', 'name', 'currentPrice']
       }
     ],
     order: [['createdAt', 'DESC']]
@@ -234,66 +219,74 @@ exports.transferBetweenUsers = async (req, res) => {
     const { toUsername, currency, amount } = req.body;
     const fromUserId = req.userId;
 
-    if (!toUsername || !currency || !amount || amount <= 0) {
-      throw new Error("Recipient, currency and amount are required");
+    if (!toUsername || !currency || amount === undefined || amount === null) {
+      if (transaction) await transaction.rollback();
+      return res.status(400).send({ message: "Recipient, currency and amount are required" });
+    }
+
+    const parsedAmount = parseFloat(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      if (transaction) await transaction.rollback();
+      return res.status(400).send({ message: "Amount must be a positive number" });
     }
 
     const fromUser = await User.findByPk(fromUserId, { transaction });
     const toUser = await User.findOne({ where: { username: toUsername }, transaction });
 
-    if (!toUser) throw new Error("Recipient not found");
-    if (fromUser.id === toUser.id) throw new Error("Cannot transfer to yourself");
+    if (!toUser) {
+      if (transaction) await transaction.rollback();
+      return res.status(400).send({ message: "Recipient not found" });
+    }
+    if (fromUser.id === toUser.id) {
+      if (transaction) await transaction.rollback();
+      return res.status(400).send({ message: "Cannot transfer to yourself" });
+    }
+
+    const allowedCurrencies = new Set(['COIN', 'USD', 'RUB', 'BTC']);
+    if (!allowedCurrencies.has(currency)) {
+      if (transaction) await transaction.rollback();
+      return res.status(400).send({ message: "Unsupported currency" });
+    }
 
     const balanceField = currency === 'RUB' ? 'rubBalance' : (currency === 'USD' ? 'usdBalance' : (currency === 'BTC' ? 'btcBalance' : 'coinBalance'));
 
-    if (parseFloat(fromUser[balanceField] || 0) < parseFloat(amount)) {
-      throw new Error("Insufficient balance");
+    const fromBalance = parseFloat(fromUser[balanceField] || 0);
+    if (fromBalance < parsedAmount) {
+      if (transaction) await transaction.rollback();
+      return res.status(400).send({ message: "Insufficient balance" });
     }
 
-    await fromUser.update({ [balanceField]: parseFloat(fromUser[balanceField]) - parseFloat(amount) }, { transaction });
-    await toUser.update({ [balanceField]: parseFloat(toUser[balanceField] || 0) + parseFloat(amount) }, { transaction });
+    // Update Users
+    await fromUser.update({ [balanceField]: fromBalance - parsedAmount }, { transaction });
+    await toUser.update({ [balanceField]: parseFloat(toUser[balanceField] || 0) + parsedAmount }, { transaction });
 
-    // Синхронизируем кошелек для указанной валюты
-    const CryptoWallet = db.cryptoWallets;
-    
-    // Обновляем кошелек отправителя
-    let fromWallet = await CryptoWallet.findOne({
-      where: { userId: fromUserId, currencyCode: currency },
-      transaction
-    });
+    // Update Wallets (One wallet per user model)
+    let fromWallet = await CryptoWallet.findOne({ where: { userId: fromUserId }, transaction });
     if (!fromWallet) {
-      // Создаем кошелек если его нет
       fromWallet = await CryptoWallet.create({
         userId: fromUserId,
-        walletAddress: `${currency}_${fromUserId}_${Date.now()}`,
-        walletType: 'internal',
-        balance: parseFloat(fromUser[balanceField]),
-        currencyCode: currency
+        walletAddress: `wallet_${fromUserId}_${Date.now()}`,
+        walletType: 'default',
+        [balanceField]: fromUser[balanceField]
       }, { transaction });
     } else {
-      await fromWallet.update({ balance: parseFloat(fromUser[balanceField]) }, { transaction });
+      await fromWallet.update({ [balanceField]: fromUser[balanceField] }, { transaction });
     }
 
-    // Обновляем кошелек получателя
-    let toWallet = await CryptoWallet.findOne({
-      where: { userId: toUser.id, currencyCode: currency },
-      transaction
-    });
+    let toWallet = await CryptoWallet.findOne({ where: { userId: toUser.id }, transaction });
     if (!toWallet) {
-      // Создаем кошелек если его нет
       toWallet = await CryptoWallet.create({
         userId: toUser.id,
-        walletAddress: `${currency}_${toUser.id}_${Date.now()}`,
-        walletType: 'internal',
-        balance: parseFloat(toUser[balanceField]),
-        currencyCode: currency
+        walletAddress: `wallet_${toUser.id}_${Date.now()}`,
+        walletType: 'default',
+        [balanceField]: toUser[balanceField]
       }, { transaction });
     } else {
-      await toWallet.update({ balance: parseFloat(toUser[balanceField]) }, { transaction });
+      await toWallet.update({ [balanceField]: toUser[balanceField] }, { transaction });
     }
 
     await Transaction.create({
-      amount: amount,
+      amount: parsedAmount,
       currencyCode: currency,
       transactionType: 'transfer',
       status: 'completed',
@@ -307,6 +300,7 @@ exports.transferBetweenUsers = async (req, res) => {
     res.send({ message: "Transfer successful", newBalance: fromUser[balanceField] });
   } catch (err) {
     if (transaction) await transaction.rollback();
+    console.error("Transfer error:", err);
     res.status(500).send({ message: err.message || "Error processing transfer" });
   }
 };
@@ -318,73 +312,70 @@ exports.exchangeCurrency = async (req, res) => {
     const { fromCurrency, toCurrency, amount } = req.body;
     const userId = req.userId;
 
-    if (!fromCurrency || !toCurrency || !amount || amount <= 0) {
-      throw new Error("From currency, to currency and amount are required");
+    if (!fromCurrency || !toCurrency || amount === undefined || amount === null) {
+      if (transaction) await transaction.rollback();
+      return res.status(400).send({ message: "From currency, to currency and amount are required" });
+    }
+
+    const parsedAmount = parseFloat(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      if (transaction) await transaction.rollback();
+      return res.status(400).send({ message: "Amount must be a positive number" });
+    }
+
+    if (fromCurrency === toCurrency) {
+      if (transaction) await transaction.rollback();
+      return res.status(400).send({ message: "From and to currency must be different" });
     }
 
     const user = await User.findByPk(userId, { transaction });
 
-    const rates = { 'COIN': 1, 'USD': 0.5, 'RUB': 50 };
+    const rates = { 'COIN': 1, 'USD': 0.5, 'RUB': 50, 'BTC': 0.00001 };
+    if (!rates[fromCurrency] || !rates[toCurrency]) {
+      if (transaction) await transaction.rollback();
+      return res.status(400).send({ message: "Unsupported currency" });
+    }
     const fromField = fromCurrency === 'RUB' ? 'rubBalance' : (fromCurrency === 'USD' ? 'usdBalance' : (fromCurrency === 'BTC' ? 'btcBalance' : 'coinBalance'));
     const toField = toCurrency === 'RUB' ? 'rubBalance' : (toCurrency === 'USD' ? 'usdBalance' : (toCurrency === 'BTC' ? 'btcBalance' : 'coinBalance'));
 
-    if (parseFloat(user[fromField] || 0) < parseFloat(amount)) {
-      throw new Error("Insufficient balance");
+    if (parseFloat(user[fromField] || 0) < parsedAmount) {
+      if (transaction) await transaction.rollback();
+      return res.status(400).send({ message: "Insufficient balance" });
     }
 
-    const amountInCoin = amount / rates[fromCurrency];
+    const amountInCoin = parsedAmount / rates[fromCurrency];
     const targetAmount = amountInCoin * rates[toCurrency];
 
     await user.update({
-      [fromField]: parseFloat(user[fromField]) - parseFloat(amount),
+      [fromField]: parseFloat(user[fromField]) - parsedAmount,
       [toField]: parseFloat(user[toField] || 0) + targetAmount
     }, { transaction });
 
-    // Синхронизируем кошельки для обеих валют
-    const CryptoWallet = db.cryptoWallets;
-    
-    // Обновляем кошелек fromCurrency
-    let fromWallet = await CryptoWallet.findOne({
-      where: { userId: userId, currencyCode: fromCurrency },
-      transaction
-    });
-    if (!fromWallet) {
-      fromWallet = await CryptoWallet.create({
+    // Update Wallet (One wallet per user model)
+    let wallet = await CryptoWallet.findOne({ where: { userId: userId }, transaction });
+    if (!wallet) {
+      wallet = await CryptoWallet.create({
         userId: userId,
-        walletAddress: `${fromCurrency}_${userId}_${Date.now()}`,
-        walletType: 'internal',
-        balance: parseFloat(user[fromField]),
-        currencyCode: fromCurrency
+        walletAddress: `wallet_${userId}_${Date.now()}`,
+        walletType: 'default',
+        [fromField]: user[fromField],
+        [toField]: user[toField]
       }, { transaction });
     } else {
-      await fromWallet.update({ balance: parseFloat(user[fromField]) }, { transaction });
-    }
-
-    // Обновляем кошелек toCurrency
-    let toWallet = await CryptoWallet.findOne({
-      where: { userId: userId, currencyCode: toCurrency },
-      transaction
-    });
-    if (!toWallet) {
-      toWallet = await CryptoWallet.create({
-        userId: userId,
-        walletAddress: `${toCurrency}_${userId}_${Date.now()}`,
-        walletType: 'internal',
-        balance: parseFloat(user[toField]),
-        currencyCode: toCurrency
+      await wallet.update({
+        [fromField]: user[fromField],
+        [toField]: user[toField]
       }, { transaction });
-    } else {
-      await toWallet.update({ balance: parseFloat(user[toField]) }, { transaction });
     }
 
     await Transaction.create({
-      amount: amount,
-      currencyCode: `${fromCurrency}->${toCurrency}`,
+      amount: parsedAmount,
+      currencyCode: toCurrency,
       transactionType: 'exchange',
       status: 'completed',
       transactionHash: `EXCHANGE_${Date.now()}`,
-      fromWalletId: fromWallet.id,
-      toWalletId: toWallet.id,
+      fromWalletId: wallet.id,
+      toWalletId: wallet.id,
       notes: `Exchange ${amount} ${fromCurrency} to ${targetAmount.toFixed(8)} ${toCurrency}`
     }, { transaction });
 
@@ -397,6 +388,7 @@ exports.exchangeCurrency = async (req, res) => {
     });
   } catch (err) {
     if (transaction) await transaction.rollback();
+    console.error("Exchange error:", err);
     res.status(500).send({ message: err.message || "Error processing exchange" });
   }
 };

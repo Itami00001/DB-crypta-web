@@ -442,7 +442,8 @@ async function submitTransfer() {
             loadTransactionsData();
         } else {
             const error = await response.json();
-            showToast(`Ошибка: ${error.message}`, 'danger');
+            console.error('Transfer error:', error);
+            showToast(`Ошибка: ${error.message || 'Неизвестная ошибка'}`, 'danger');
         }
     } catch (error) {
         console.error('Error submitting transfer:', error);
@@ -493,7 +494,8 @@ async function submitExchange() {
             }
         } else {
             const error = await response.json();
-            showToast(`Ошибка: ${error.message}`, 'danger');
+            console.error('Exchange error:', error);
+            showToast(`Ошибка: ${error.message || 'Неизвестная ошибка'}`, 'danger');
         }
     } catch (error) {
         console.error('Error submitting exchange:', error);
@@ -514,7 +516,7 @@ async function loadUsersForTransfer() {
         users.forEach(user => {
             if (user.id !== currentUser?.id) {
                 const option = document.createElement('option');
-                option.value = user.id;
+                option.value = user.username;
                 option.textContent = user.username;
                 select.appendChild(option);
             }
@@ -660,7 +662,21 @@ async function loadTransactionsData() {
             return;
         }
 
-        const transactions = await fetch(`${API_BASE}/transactions`, { headers }).then(r => r.json());
+        const res = await fetch(`${API_BASE}/transactions`, { headers });
+        if (res.status === 401) return logout();
+        if (!res.ok) {
+            const error = await res.json();
+            console.error('Transactions API error:', error);
+            showToast(error.message || 'Ошибка загрузки транзакций', 'danger');
+            renderTransactions([]);
+            return;
+        }
+        const transactions = await res.json();
+        if (!Array.isArray(transactions)) {
+            console.error('Transactions response is not an array:', transactions);
+            renderTransactions([]);
+            return;
+        }
         renderTransactions(transactions);
     } catch (error) {
         console.error('Error loading transactions data:', error);
@@ -699,6 +715,7 @@ async function fetchNews() {
                 'Content-Type': 'application/json'
             }
         });
+        if (response.status === 401) return logout();
 
         const contentType = response.headers.get('content-type') || '';
         let result = null;
@@ -728,7 +745,11 @@ async function fetchNews() {
 
 async function loadPredictionsData() {
     try {
-        const predictions = await fetch(`${API_BASE}/user-predictions`).then(r => r.json());
+        const res = await fetch(`${API_BASE}/user-predictions`, {
+            headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+        });
+        if (res.status === 401) return logout();
+        const predictions = await res.json();
         renderPredictions(predictions);
     } catch (error) {
         console.error('Error loading predictions data:', error);
@@ -1324,6 +1345,8 @@ async function createWallet() {
 
 async function topupWallet() {
     try {
+        showToast('Данная функция в разработке', 'info');
+        return;
         const walletId = document.getElementById('topupWalletSelect').value;
         const currency = document.getElementById('topupWalletCurrency').value;
         const amount = parseFloat(document.getElementById('topupWalletAmount').value);
