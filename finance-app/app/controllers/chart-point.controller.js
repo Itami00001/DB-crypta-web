@@ -22,6 +22,26 @@ exports.create = (req, res) => {
     });
 };
 
+// Delete all ChartPoints for current user (optionally by symbol)
+exports.deleteAllForUser = (req, res) => {
+  const userId = req.userId;
+  const symbol = req.query.symbol;
+  const where = { userId };
+  if (symbol) {
+    where.symbol = symbol;
+  }
+
+  ChartPoint.destroy({ where })
+    .then(nums => {
+      res.send({ message: `${nums} points were deleted successfully!` });
+    })
+    .catch(err => {
+      res.status(500).send({
+        message: err.message || "Some error occurred while deleting chart points."
+      });
+    });
+};
+
 // Retrieve all ChartPoints for a user
 exports.findAll = (req, res) => {
   const userId = req.userId;

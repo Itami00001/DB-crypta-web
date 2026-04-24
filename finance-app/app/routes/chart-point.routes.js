@@ -9,6 +9,9 @@ module.exports = app => {
   // Retrieve all ChartPoints for the current user
   router.get("/", verifyToken, chartPoints.findAll);
 
+  // Delete all ChartPoints for the current user (optionally by symbol)
+  router.delete("/", verifyToken, chartPoints.deleteAllForUser);
+
   // Delete a ChartPoint
   router.delete("/:id", verifyToken, chartPoints.delete);
 

@@ -442,39 +442,55 @@
 
             <div class="row">
                 <!-- Живой график рынка -->
-                <div class="col-lg-6 mb-4">
-                    <div class="card shadow-sm border-0 h-100">
+                <div class="col-12 mb-4">
+                    <div class="card shadow-sm border-0">
                         <div class="card-header bg-white border-0">
                             <h5 class="mb-0">Рыночные тренды</h5>
                         </div>
-                        <div class="card-body" style="height: 350px;">
-                            <canvas id="marketLiveChart"></canvas>
+                        <div class="card-body">
+                            <div class="chart-container" style="width: 100%; height: 350px;">
+                                <canvas id="marketLiveChart" style="width: 100%; height: 100%;"></canvas>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- График поинтов -->
-                <div class="col-lg-6 mb-4">
-                    <div class="card shadow-sm border-0 h-100">
+                <div class="col-12 mb-4">
+                    <div class="card shadow-sm border-0">
                         <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
                             <h5 class="mb-0">Мои «Поинты»</h5>
-                            <select id="pointCurrencySelect" class="form-select form-select-sm w-auto"
-                                onchange="loadPointsChart()">
-                                <option value="BTC">Bitcoin (BTC)</option>
-                                <option value="ETH">Ethereum (ETH)</option>
-                                <option value="SOL">Solana (SOL)</option>
-                            </select>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="text-muted small">Выберите валюту</span>
+                                <select id="pointCurrencySelect" class="form-select form-select-sm w-auto"
+                                    onchange="loadPointsChart()">
+                                    <option value="BTC">Bitcoin (BTC)</option>
+                                    <option value="ETH">Ethereum (ETH)</option>
+                                    <option value="SOL">Solana (SOL)</option>
+                                </select>
+                            </div>
                         </div>
-                        <div class="card-body" style="height: 350px;">
+                        <div class="card-body">
                             <div
                                 class="alert alert-light py-2 small mb-2 border text-muted d-flex justify-content-between align-items-center">
                                 <span><i class="bi bi-info-circle"></i> Кликните на график или:</span>
-                                <button class="btn btn-xs btn-primary py-0" onclick="addCurrentPoint()"
-                                    title="Поставить точку на текущую цену">
-                                    <i class="bi bi-pin-angle-fill"></i> Точка
-                                </button>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-xs btn-primary py-0" onclick="addCurrentPoint()"
+                                        title="Поставить точку на текущую цену">
+                                        <i class="bi bi-pin-angle-fill"></i> Точка
+                                    </button>
+                                    <button class="btn btn-xs btn-outline-danger py-0" onclick="resetPoints()"
+                                        title="Удалить все поинты для выбранной валюты">
+                                        <i class="bi bi-trash"></i> Сбросить Point
+                                    </button>
+                                </div>
                             </div>
-                            <canvas id="pointsChart"></canvas>
+                            <div class="chart-container" style="width: 100%; height: 350px;">
+                                <canvas id="pointsChart" style="width: 100%; height: 100%;"></canvas>
+                            </div>
+                        </div>
+                        <div class="card-footer bg-white border-0">
+                            <div id="pointsLog" class="small text-muted"></div>
                         </div>
                     </div>
                 </div>

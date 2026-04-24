@@ -1900,6 +1900,7 @@ async function register() {
 let marketChart = null;
 let pointsChart = null;
 let countdownInterval = null;
+let lastMarketHistory = null;
 
 async function loadMarketCharts() {
     try {
@@ -1914,7 +1915,7 @@ async function loadMarketCharts() {
             renderMarketChart(labels, prices, changes);
             updateMarketTable(data.RAW);
         }
-        loadPointsChart();
+        initPointsChartIfNeeded();
     } catch (error) {
         console.error('Error loading market charts:', error);
     }
@@ -1939,106 +1940,122 @@ function renderMarketChart(labels, prices, changes) {
         },
         options: {
             responsive: true,
-            maintainAspectRatio: true,
-            aspectRatio: 2,
+            maintainAspectRatio: false,
             animation: false
         }
     });
 }
 
+function initPointsChartIfNeeded() {
+    const canvas = document.getElementById('pointsChart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (pointsChart) return;
+
+    pointsChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Мои поинты',
+                data: [],
+                borderColor: 'rgba(13, 110, 253, 1)',
+                backgroundColor: 'rgba(13, 110, 253, 0.25)',
+                pointBackgroundColor: 'rgba(13, 110, 253, 1)',
+                pointBorderColor: 'rgba(13, 110, 253, 1)',
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                fill: false,
+                tension: 0.25
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            scales: {
+                x: {
+                    title: { display: true, text: 'Дата и время' },
+                    ticks: { maxRotation: 0, autoSkip: true }
+                },
+                y: {
+                    title: { display: true, text: 'Цена' }
+                }
+            }
+        }
+    });
+
+    renderPointsLog([]);
+}
+
 async function loadPointsChart() {
+    initPointsChartIfNeeded();
     const selectEl = document.getElementById('pointCurrencySelect');
     if (!selectEl) return;
     const symbol = selectEl.value;
+
+    // Empty state when not logged in
+    if (!authToken) {
+        if (pointsChart) {
+            pointsChart.data.labels = [];
+            pointsChart.data.datasets[0].data = [];
+            pointsChart.data.datasets[0].label = `Мои поинты (${symbol})`;
+            pointsChart.update();
+        }
+        renderPointsLog([]);
+        return;
+    }
+
     try {
-        const historyRes = await fetch(`https://min-api.cryptocompare.com/data/v2/histohour?fsym=${symbol}&tsym=USD&limit=24`);
-        const historyData = await historyRes.json();
+        const pointsRes = await fetch(`${API_BASE}/chart-points?symbol=${symbol}`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (!pointsRes.ok) {
+            renderPointsLog([]);
+            return;
+        }
+        const data = await pointsRes.json();
+        const savedPoints = Array.isArray(data) ? data : [];
 
-        const labels = historyData.Data.Data.map(d => new Date(d.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-        const prices = historyData.Data.Data.map(d => d.close);
+        const labels = savedPoints.map(p => {
+            const d = new Date(p.timestamp);
+            return isNaN(d.getTime()) ? String(p.timestamp) : d.toLocaleString('ru-RU');
+        });
+        const values = savedPoints.map(p => parseFloat(p.price)).filter(v => Number.isFinite(v));
 
-        // Only fetch saved points if the user is logged in
-        let savedPoints = [];
-        if (authToken) {
-            try {
-                const pointsRes = await fetch(`${API_BASE}/chart-points?symbol=${symbol}`, {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
-                });
-                if (pointsRes.ok) {
-                    const data = await pointsRes.json();
-                    savedPoints = Array.isArray(data) ? data : [];
-                }
-            } catch (e) { /* ignore */ }
+        if (pointsChart) {
+            pointsChart.data.labels = labels;
+            pointsChart.data.datasets[0].label = `Мои поинты (${symbol})`;
+            pointsChart.data.datasets[0].data = values;
+            pointsChart.update();
         }
 
-        renderPointsChart(symbol, labels, prices, savedPoints);
+        renderPointsLog(savedPoints);
     } catch (error) {
         console.error('Error loading points chart:', error);
     }
 }
 
-function renderPointsChart(symbol, labels, prices, savedPoints) {
-    const canvas = document.getElementById('pointsChart');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (pointsChart) pointsChart.destroy();
+function renderPointsLog(savedPoints) {
+    const el = document.getElementById('pointsLog');
+    if (!el) return;
+    if (!savedPoints || savedPoints.length === 0) {
+        el.textContent = 'Пока нет поинтов. Нажмите «Точка», чтобы добавить.';
+        return;
+    }
 
-    const pointsData = savedPoints.map(p => {
-        const timeLabel = new Date(p.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        // Match the label in the history data
-        const labelIndex = labels.indexOf(timeLabel);
-        if (labelIndex !== -1) {
-            return { x: timeLabel, y: parseFloat(p.price) };
-        }
-        return null;
-    }).filter(p => p !== null);
+    const items = [...savedPoints]
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+        .slice(0, 10)
+        .map(p => {
+            const dt = new Date(p.timestamp);
+            const dtText = isNaN(dt.getTime()) ? String(p.timestamp) : dt.toLocaleString('ru-RU');
+            return `${dtText} — ${Number(p.price).toFixed(2)}`;
+        });
 
-    pointsChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: `${symbol} Цена`,
-                    data: prices,
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    fill: false,
-                    tension: 0.1
-                },
-                {
-                    label: 'Ваши поинты',
-                    data: pointsData,
-                    backgroundColor: 'red',
-                    pointRadius: 8,
-                    type: 'scatter',
-                    showLine: false
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            aspectRatio: 2,
-            animation: false,
-            onClick: (e) => {
-                if (!authToken) {
-                    showToast('Войдите, чтобы ставить поинты', 'warning');
-                    return;
-                }
-                const activePoints = pointsChart.getElementsAtEventForMode(e, 'index', { intersect: false }, true);
-                if (activePoints.length > 0) {
-                    const index = activePoints[0].index;
-                    const price = pointsChart.data.datasets[0].data[index];
-                    const timeLabel = pointsChart.data.labels[index];
-                    const now = new Date();
-                    const [hours, minutes] = timeLabel.split(':');
-                    const pointDate = new Date(now.setHours(parseInt(hours), parseInt(minutes), 0, 0));
-
-                    saveChartPoint(symbol, price, pointDate);
-                }
-            }
-        }
-    });
+    el.innerHTML = items.map(t => `<div>${t}</div>`).join('');
 }
 
 function addCurrentPoint() {
@@ -2047,20 +2064,57 @@ function addCurrentPoint() {
         return;
     }
     const symbol = document.getElementById('pointCurrencySelect').value;
-    if (!pointsChart || !pointsChart.data.datasets[0].data.length) {
-        showToast('График еще не загружен', 'info');
+    const now = new Date();
+
+    // Use latest price from CryptoCompare to avoid coupling points to a market-history line chart.
+    fetch(`https://min-api.cryptocompare.com/data/price?fsym=${symbol}&tsyms=USD`)
+        .then(r => r.json())
+        .then(d => {
+            const price = d && typeof d.USD === 'number' ? d.USD : null;
+            if (price === null) {
+                showToast('Не удалось получить текущую цену', 'danger');
+                return;
+            }
+            saveChartPoint(symbol, price, now);
+        })
+        .catch(() => {
+            showToast('Не удалось получить текущую цену', 'danger');
+        });
+}
+
+async function resetPoints() {
+    if (!authToken) {
+        showToast('Войдите, чтобы управлять поинтами', 'warning');
         return;
     }
-    // Get the latest price point (last element in the labels/data)
-    const lastIndex = pointsChart.data.labels.length - 1;
-    const price = pointsChart.data.datasets[0].data[lastIndex];
-    const timeLabel = pointsChart.data.labels[lastIndex];
+    const selectEl = document.getElementById('pointCurrencySelect');
+    if (!selectEl) return;
+    const symbol = selectEl.value;
 
-    const now = new Date();
-    const [hours, minutes] = timeLabel.split(':');
-    const pointDate = new Date(now.setHours(parseInt(hours), parseInt(minutes), 0, 0));
+    try {
+        const response = await fetch(`${API_BASE}/chart-points?symbol=${encodeURIComponent(symbol)}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
 
-    saveChartPoint(symbol, price, pointDate);
+        if (!response.ok) {
+            showToast('Не удалось сбросить поинты', 'danger');
+            return;
+        }
+
+        if (pointsChart) {
+            pointsChart.data.labels = [];
+            pointsChart.data.datasets[0].data = [];
+            pointsChart.update();
+        }
+        renderPointsLog([]);
+        showToast('Поинты сброшены', 'success');
+    } catch (e) {
+        console.error('Reset points error:', e);
+        showToast('Не удалось сбросить поинты', 'danger');
+    }
 }
 
 async function saveChartPoint(symbol, price, timestamp) {
