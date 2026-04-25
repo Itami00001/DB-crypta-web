@@ -132,3 +132,11 @@ private/
 config/local.js
 config/production.js
 public/js/config.js
+
+# Temporary documentation files (keep only essential docs)
+*.md
+!README.md
+!docs/README.md
+!docs/transactions_isolation_and_locks.md
+!docs/architecture.md
+!database/schema_target/README.md

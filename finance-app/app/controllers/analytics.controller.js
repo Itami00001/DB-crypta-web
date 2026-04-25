@@ -16,7 +16,7 @@ exports.getUserStats = async (req, res) => {
         u.is_verified,
         u.created_at,
         COUNT(cw.id) as wallet_count,
-        COALESCE(SUM(cw.balance), 0) as total_balance,
+        COALESCE(SUM(cw.coin_balance), 0) as total_balance,
         COUNT(DISTINCT t.id) as transaction_count,
         COUNT(DISTINCT np.id) as post_count,
         COUNT(DISTINCT up.id) as prediction_count
@@ -60,7 +60,7 @@ exports.getCryptoStats = async (req, res) => {
         cc.market_cap,
         cc.volume24h,
         COUNT(DISTINCT cw.id) as wallet_count,
-        COALESCE(SUM(cw.balance), 0) as total_held,
+        COALESCE(SUM(cw.coin_balance), 0) as total_held,
         COUNT(DISTINCT up.id) as prediction_count,
         COUNT(DISTINCT CASE WHEN up.prediction_type = 'bullish' THEN up.id END) as bullish_predictions,
         COUNT(DISTINCT CASE WHEN up.prediction_type = 'bearish' THEN up.id END) as bearish_predictions,
@@ -214,10 +214,10 @@ exports.getWalletSummary = async (req, res) => {
         cc.name as currency_name,
         cc.current_price,
         COUNT(cw.id) as wallet_count,
-        COALESCE(SUM(cw.balance), 0) as total_balance,
-        COALESCE(SUM(cw.balance * cc.current_price), 0) as total_value_usd,
-        MIN(cw.balance) as min_wallet_balance,
-        MAX(cw.balance) as max_wallet_balance
+        COALESCE(SUM(cw.coin_balance), 0) as total_balance,
+        COALESCE(SUM(cw.coin_balance * cc.current_price), 0) as total_value_usd,
+        MIN(cw.coin_balance) as min_wallet_balance,
+        MAX(cw.coin_balance) as max_wallet_balance
       FROM crypto_wallets cw
       JOIN crypto_currencies cc ON cw.currency_code = cc.symbol
       WHERE cw.user_id = :userId AND cw.is_active = true
