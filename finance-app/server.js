@@ -50,6 +50,461 @@ const swaggerOptions = {
           scheme: 'bearer',
           bearerFormat: 'JWT',
         }
+      },
+      schemas: {
+        User: {
+          type: 'object',
+          required: ['username', 'email', 'passwordHash'],
+          properties: {
+            id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'User unique identifier'
+            },
+            username: {
+              type: 'string',
+              example: 'john_doe'
+            },
+            email: {
+              type: 'string',
+              format: 'email',
+              example: 'john@example.com'
+            },
+            passwordHash: {
+              type: 'string',
+              description: 'Hashed password (write-only)'
+            },
+            firstName: {
+              type: 'string',
+              example: 'John'
+            },
+            lastName: {
+              type: 'string',
+              example: 'Doe'
+            },
+            phone: {
+              type: 'string',
+              example: '+1234567890'
+            },
+            isVerified: {
+              type: 'boolean',
+              example: false
+            },
+            isAdmin: {
+              type: 'boolean',
+              example: false
+            },
+            coinBalance: {
+              type: 'number',
+              format: 'decimal',
+              example: 100.50
+            },
+            btcBalance: {
+              type: 'number',
+              format: 'decimal',
+              example: 0.001
+            },
+            usdBalance: {
+              type: 'number',
+              format: 'decimal',
+              example: 1000.00
+            },
+            rubBalance: {
+              type: 'number',
+              format: 'decimal',
+              example: 75000.00
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time'
+            },
+            updatedAt: {
+              type: 'string',
+              format: 'date-time'
+            }
+          }
+        },
+        CryptoWallet: {
+          type: 'object',
+          required: ['userId', 'walletAddress', 'walletType'],
+          properties: {
+            id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Wallet unique identifier'
+            },
+            userId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Owner user ID'
+            },
+            walletAddress: {
+              type: 'string',
+              example: 'wallet_abc123'
+            },
+            walletType: {
+              type: 'string',
+              example: 'default'
+            },
+            coinBalance: {
+              type: 'number',
+              format: 'decimal',
+              example: 100.50
+            },
+            btcBalance: {
+              type: 'number',
+              format: 'decimal',
+              example: 0.001
+            },
+            usdBalance: {
+              type: 'number',
+              format: 'decimal',
+              example: 1000.00
+            },
+            rubBalance: {
+              type: 'number',
+              format: 'decimal',
+              example: 75000.00
+            },
+            isActive: {
+              type: 'boolean',
+              example: true
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time'
+            },
+            updatedAt: {
+              type: 'string',
+              format: 'date-time'
+            }
+          }
+        },
+        Transaction: {
+          type: 'object',
+          required: ['amount', 'currencyCode', 'transactionType', 'fromWalletId'],
+          properties: {
+            id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Transaction unique identifier'
+            },
+            amount: {
+              type: 'number',
+              format: 'decimal',
+              example: 100.50
+            },
+            currencyCode: {
+              type: 'string',
+              example: 'USD'
+            },
+            transactionType: {
+              type: 'string',
+              enum: ['transfer', 'buy', 'sell', 'deposit', 'withdraw', 'exchange'],
+              example: 'transfer'
+            },
+            status: {
+              type: 'string',
+              enum: ['pending', 'completed', 'failed', 'cancelled'],
+              example: 'completed'
+            },
+            fee: {
+              type: 'number',
+              format: 'decimal',
+              example: 0.50
+            },
+            transactionHash: {
+              type: 'string',
+              example: 'TRANSFER_1234567890'
+            },
+            fromWalletId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Source wallet ID'
+            },
+            toWalletId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Destination wallet ID (null for deposit/withdraw)'
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time'
+            },
+            updatedAt: {
+              type: 'string',
+              format: 'date-time'
+            }
+          }
+        },
+        NewsPost: {
+          type: 'object',
+          required: ['title', 'content'],
+          properties: {
+            id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Post unique identifier'
+            },
+            title: {
+              type: 'string',
+              example: 'Bitcoin Price Analysis'
+            },
+            content: {
+              type: 'string',
+              example: 'Detailed analysis of Bitcoin price movements...'
+            },
+            postType: {
+              type: 'string',
+              enum: ['news', 'prediction', 'analysis', 'announcement'],
+              example: 'analysis'
+            },
+            category: {
+              type: 'string',
+              example: 'cryptocurrency'
+            },
+            isPublished: {
+              type: 'boolean',
+              example: true
+            },
+            viewCount: {
+              type: 'integer',
+              example: 150
+            },
+            url: {
+              type: 'string',
+              example: 'https://example.com/bitcoin-analysis'
+            },
+            imageUrl: {
+              type: 'string',
+              example: 'https://example.com/bitcoin.jpg'
+            },
+            authorId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Author user ID'
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time'
+            },
+            updatedAt: {
+              type: 'string',
+              format: 'date-time'
+            }
+          }
+        },
+        Comment: {
+          type: 'object',
+          required: ['content'],
+          properties: {
+            id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Comment unique identifier'
+            },
+            content: {
+              type: 'string',
+              example: 'Great analysis!'
+            },
+            isDeleted: {
+              type: 'boolean',
+              example: false
+            },
+            userId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Comment author user ID'
+            },
+            postId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Post ID'
+            },
+            parentCommentId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Parent comment ID for nested replies'
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time'
+            },
+            updatedAt: {
+              type: 'string',
+              format: 'date-time'
+            }
+          }
+        },
+        Like: {
+          type: 'object',
+          required: ['likeType'],
+          properties: {
+            id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Like unique identifier'
+            },
+            likeType: {
+              type: 'string',
+              enum: ['like', 'dislike', 'love'],
+              example: 'like'
+            },
+            userId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'User who liked'
+            },
+            postId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Post that was liked'
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time'
+            },
+            updatedAt: {
+              type: 'string',
+              format: 'date-time'
+            }
+          }
+        },
+        UserPrediction: {
+          type: 'object',
+          required: ['predictedPrice', 'targetPrice', 'predictionType', 'predictionDate', 'targetDate'],
+          properties: {
+            id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Prediction unique identifier'
+            },
+            predictedPrice: {
+              type: 'number',
+              format: 'decimal',
+              example: 70000.00
+            },
+            targetPrice: {
+              type: 'number',
+              format: 'decimal',
+              example: 75000.00
+            },
+            predictionType: {
+              type: 'string',
+              enum: ['bullish', 'bearish', 'neutral'],
+              example: 'bullish'
+            },
+            predictionDate: {
+              type: 'string',
+              format: 'date-time'
+            },
+            targetDate: {
+              type: 'string',
+              format: 'date-time'
+            },
+            isActive: {
+              type: 'boolean',
+              example: true
+            },
+            notes: {
+              type: 'string',
+              example: 'Based on technical analysis'
+            },
+            userId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Prediction author user ID'
+            },
+            currencyId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Cryptocurrency ID'
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time'
+            },
+            updatedAt: {
+              type: 'string',
+              format: 'date-time'
+            }
+          }
+        },
+        ChartPoint: {
+          type: 'object',
+          required: ['symbol', 'price'],
+          properties: {
+            id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Chart point unique identifier'
+            },
+            symbol: {
+              type: 'string',
+              example: 'BTC'
+            },
+            price: {
+              type: 'number',
+              format: 'decimal',
+              example: 68000.00
+            },
+            timestamp: {
+              type: 'string',
+              format: 'date-time'
+            },
+            note: {
+              type: 'string',
+              example: 'Resistance level'
+            },
+            userId: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Point creator user ID'
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time'
+            },
+            updatedAt: {
+              type: 'string',
+              format: 'date-time'
+            }
+          }
+        },
+        ErrorResponse: {
+          type: 'object',
+          properties: {
+            message: {
+              type: 'string',
+              description: 'Error description'
+            }
+          }
+        },
+        ValidationError: {
+          type: 'object',
+          properties: {
+            message: {
+              type: 'string',
+              description: 'Validation error description'
+            },
+            errors: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  field: {
+                    type: 'string',
+                    description: 'Field name'
+                  },
+                  message: {
+                    type: 'string',
+                    description: 'Error message for the field'
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
   },

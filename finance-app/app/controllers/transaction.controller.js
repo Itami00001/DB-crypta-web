@@ -214,7 +214,12 @@ exports.deleteAll = (req, res) => {
 
 // Transfer between users with ACID transaction
 exports.transferBetweenUsers = async (req, res) => {
-  const transaction = await db.sequelize.transaction();
+  // ВАЖНО: предполагается конкурентная запись на балансы пользователей.
+  // Выбран уровень изоляции SERIALIZABLE для предотвращения lost update и аномалий сериализации.
+  // Используется блокировка UPDATE (FOR UPDATE) на записи пользователей и кошельков.
+  const transaction = await db.sequelize.transaction({
+    isolationLevel: db.Sequelize.Transaction.ISOLATION_LEVELS.SERIALIZABLE
+  });
   try {
     const { toUsername, currency, amount } = req.body;
     const fromUserId = req.userId;
@@ -230,8 +235,15 @@ exports.transferBetweenUsers = async (req, res) => {
       return res.status(400).send({ message: "Amount must be a positive number" });
     }
 
-    const fromUser = await User.findByPk(fromUserId, { transaction });
-    const toUser = await User.findOne({ where: { username: toUsername }, transaction });
+    const fromUser = await User.findByPk(fromUserId, { 
+      transaction,
+      lock: transaction.LOCK.UPDATE 
+    });
+    const toUser = await User.findOne({ 
+      where: { username: toUsername }, 
+      transaction,
+      lock: transaction.LOCK.UPDATE 
+    });
 
     if (!toUser) {
       if (transaction) await transaction.rollback();
@@ -261,7 +273,11 @@ exports.transferBetweenUsers = async (req, res) => {
     await toUser.update({ [balanceField]: parseFloat(toUser[balanceField] || 0) + parsedAmount }, { transaction });
 
     // Update Wallets (One wallet per user model)
-    let fromWallet = await CryptoWallet.findOne({ where: { userId: fromUserId }, transaction });
+    let fromWallet = await CryptoWallet.findOne({ 
+      where: { userId: fromUserId }, 
+      transaction,
+      lock: transaction.LOCK.UPDATE 
+    });
     if (!fromWallet) {
       fromWallet = await CryptoWallet.create({
         userId: fromUserId,
@@ -273,7 +289,11 @@ exports.transferBetweenUsers = async (req, res) => {
       await fromWallet.update({ [balanceField]: fromUser[balanceField] }, { transaction });
     }
 
-    let toWallet = await CryptoWallet.findOne({ where: { userId: toUser.id }, transaction });
+    let toWallet = await CryptoWallet.findOne({ 
+      where: { userId: toUser.id }, 
+      transaction,
+      lock: transaction.LOCK.UPDATE 
+    });
     if (!toWallet) {
       toWallet = await CryptoWallet.create({
         userId: toUser.id,
@@ -307,7 +327,12 @@ exports.transferBetweenUsers = async (req, res) => {
 
 // Exchange currency with ACID transaction
 exports.exchangeCurrency = async (req, res) => {
-  const transaction = await db.sequelize.transaction();
+  // ВАЖНО: предполагается конкурентная запись на балансы пользователя при обмене валют.
+  // Выбран уровень изоляции SERIALIZABLE для предотвращения lost update и аномалий сериализации.
+  // Используется блокировка UPDATE (FOR UPDATE) на запись пользователя и кошелёк.
+  const transaction = await db.sequelize.transaction({
+    isolationLevel: db.Sequelize.Transaction.ISOLATION_LEVELS.SERIALIZABLE
+  });
   try {
     const { fromCurrency, toCurrency, amount } = req.body;
     const userId = req.userId;
@@ -328,7 +353,10 @@ exports.exchangeCurrency = async (req, res) => {
       return res.status(400).send({ message: "From and to currency must be different" });
     }
 
-    const user = await User.findByPk(userId, { transaction });
+    const user = await User.findByPk(userId, { 
+      transaction,
+      lock: transaction.LOCK.UPDATE 
+    });
 
     const rates = { 'COIN': 1, 'USD': 0.5, 'RUB': 50, 'BTC': 0.00001 };
     if (!rates[fromCurrency] || !rates[toCurrency]) {
@@ -352,7 +380,11 @@ exports.exchangeCurrency = async (req, res) => {
     }, { transaction });
 
     // Update Wallet (One wallet per user model)
-    let wallet = await CryptoWallet.findOne({ where: { userId: userId }, transaction });
+    let wallet = await CryptoWallet.findOne({ 
+      where: { userId: userId }, 
+      transaction,
+      lock: transaction.LOCK.UPDATE 
+    });
     if (!wallet) {
       wallet = await CryptoWallet.create({
         userId: userId,

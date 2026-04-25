@@ -1,5 +1,10 @@
 module.exports = (sequelize, Sequelize) => {
   const CryptoCurrency = sequelize.define("cryptoCurrency", {
+    id: {
+      type: Sequelize.UUID,
+      defaultValue: Sequelize.UUIDV4,
+      primaryKey: true
+    },
     symbol: {
       type: Sequelize.STRING,
       allowNull: false,
@@ -14,15 +19,24 @@ module.exports = (sequelize, Sequelize) => {
     },
     currentPrice: {
       type: Sequelize.DECIMAL(20, 8),
-      defaultValue: 0
+      defaultValue: 0,
+      validate: {
+        min: 0
+      }
     },
     marketCap: {
       type: Sequelize.DECIMAL(20, 2),
-      defaultValue: 0
+      defaultValue: 0,
+      validate: {
+        min: 0
+      }
     },
     volume24h: {
       type: Sequelize.DECIMAL(20, 2),
-      defaultValue: 0
+      defaultValue: 0,
+      validate: {
+        min: 0
+      }
     },
     iconUrl: {
       type: Sequelize.STRING
@@ -31,6 +45,13 @@ module.exports = (sequelize, Sequelize) => {
       type: Sequelize.BOOLEAN,
       defaultValue: true
     }
+  }, {
+    indexes: [
+      {
+        unique: true,
+        fields: ['symbol']
+      }
+    ]
   });
 
   return CryptoCurrency;
