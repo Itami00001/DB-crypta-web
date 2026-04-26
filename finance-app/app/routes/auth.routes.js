@@ -10,8 +10,9 @@
  *         - password
  *       properties:
  *         id:
- *           type: integer
- *           description: ID пользователя
+ *           type: string
+ *           format: uuid
+ *           description: ID пользователя (UUID)
  *         username:
  *           type: string
  *           description: Имя пользователя

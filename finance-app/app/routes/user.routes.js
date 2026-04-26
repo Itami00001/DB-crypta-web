@@ -10,8 +10,9 @@
  *         - passwordHash
  *       properties:
  *         id:
- *           type: integer
- *           description: The auto-generated id of user
+ *           type: string
+ *           format: uuid
+ *           description: User UUID
  *         username:
  *           type: string
  *           description: The username of the user
@@ -111,8 +112,9 @@ module.exports = app => {
    *       - in: path
    *         name: id
    *         required: true
-   *         schema:
-   *           type: integer
+ *         schema:
+ *           type: string
+ *           format: uuid
    *     responses:
    *       200:
    *         description: User found
@@ -136,8 +138,9 @@ module.exports = app => {
    *       - in: path
    *         name: id
    *         required: true
-   *         schema:
-   *           type: integer
+ *         schema:
+ *           type: string
+ *           format: uuid
    *     requestBody:
    *       required: true
    *       content:
@@ -165,8 +168,9 @@ module.exports = app => {
    *       - in: path
    *         name: id
    *         required: true
-   *         schema:
-   *           type: integer
+ *         schema:
+ *           type: string
+ *           format: uuid
    *     responses:
    *       200:
    *         description: User deleted successfully

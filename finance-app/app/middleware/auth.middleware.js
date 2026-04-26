@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // Middleware для проверки JWT токена
 const verifyToken = (req, res, next) => {
@@ -22,6 +23,13 @@ const verifyToken = (req, res, next) => {
       });
     }
 
+    // Reject legacy numeric tokens after UUID migration.
+    if (typeof decoded?.id !== "string" || !UUID_REGEX.test(decoded.id)) {
+      return res.status(401).send({
+        message: "Токен устарел. Войдите снова."
+      });
+    }
+
     req.userId = decoded.id;
     req.username = decoded.username;
     req.isAdmin = decoded.isAdmin;
@@ -42,7 +50,7 @@ const optionalVerifyToken = (req, res, next) => {
     : token;
 
   jwt.verify(tokenValue, process.env.JWT_SECRET || "your-secret-key", (err, decoded) => {
-    if (!err) {
+    if (!err && typeof decoded?.id === "string" && UUID_REGEX.test(decoded.id)) {
       req.userId = decoded.id;
       req.username = decoded.username;
     }

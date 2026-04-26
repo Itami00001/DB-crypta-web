@@ -3,6 +3,37 @@ const Transaction = db.transactions;
 const User = db.users;
 const CryptoWallet = db.cryptoWallets;
 const CryptoCurrency = db.cryptoCurrencies;
+const MAX_SERIALIZATION_RETRIES = 3;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const isSerializationFailure = (error) =>
+  error?.name === "SequelizeDatabaseError" &&
+  (error?.original?.code === "40001" || String(error?.message || "").toLowerCase().includes("could not serialize access"));
+
+const runWithSerializableRetry = async (handler) => {
+  let lastError = null;
+  for (let attempt = 1; attempt <= MAX_SERIALIZATION_RETRIES; attempt += 1) {
+    const transaction = await db.sequelize.transaction({
+      isolationLevel: db.Sequelize.Transaction.ISOLATION_LEVELS.SERIALIZABLE
+    });
+
+    try {
+      const result = await handler(transaction);
+      await transaction.commit();
+      return result;
+    } catch (err) {
+      lastError = err;
+      if (transaction) {
+        await transaction.rollback();
+      }
+
+      if (!isSerializationFailure(err) || attempt === MAX_SERIALIZATION_RETRIES) {
+        throw err;
+      }
+    }
+  }
+  throw lastError;
+};
 
 // Create a new Transaction
 exports.create = (req, res) => {
@@ -38,18 +69,23 @@ exports.create = (req, res) => {
 // Retrieve all Transactions from database.
 exports.findAll = (req, res) => {
   const userId = req.userId; // Will be set if verifyToken was used, but it's optional now
+  const hasValidUuidUserId = typeof userId === "string" && UUID_REGEX.test(userId);
 
   // If we want to strictly filter by user even on public route (if token is provided in headers)
   // We need to call verifyToken optionally or manually here.
   // For now, let's just make it return empty if no userId is found, 
   // OR return all if requested by an admin (if we implement admin check).
 
-  const whereClause = userId ? {
+  if (!hasValidUuidUserId) {
+    return res.send([]);
+  }
+
+  const whereClause = {
     [db.Sequelize.Op.or]: [
       { '$fromWallet.user_id$': userId },
       { '$toWallet.user_id$': userId }
     ]
-  } : { id: -1 };
+  };
 
   Transaction.findAll({
     where: whereClause,
@@ -214,213 +250,221 @@ exports.deleteAll = (req, res) => {
 
 // Transfer between users with ACID transaction
 exports.transferBetweenUsers = async (req, res) => {
-  // ВАЖНО: предполагается конкурентная запись на балансы пользователей.
-  // Выбран уровень изоляции SERIALIZABLE для предотвращения lost update и аномалий сериализации.
-  // Используется блокировка UPDATE (FOR UPDATE) на записи пользователей и кошельков.
-  const transaction = await db.sequelize.transaction({
-    isolationLevel: db.Sequelize.Transaction.ISOLATION_LEVELS.SERIALIZABLE
-  });
   try {
     const { toUsername, currency, amount } = req.body;
     const fromUserId = req.userId;
 
     if (!toUsername || !currency || amount === undefined || amount === null) {
-      if (transaction) await transaction.rollback();
       return res.status(400).send({ message: "Recipient, currency and amount are required" });
     }
 
     const parsedAmount = parseFloat(amount);
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-      if (transaction) await transaction.rollback();
       return res.status(400).send({ message: "Amount must be a positive number" });
     }
+    const result = await runWithSerializableRetry(async (transaction) => {
+      const fromUser = await User.findByPk(fromUserId, {
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      const toUser = await User.findOne({
+        where: { username: toUsername },
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
 
-    const fromUser = await User.findByPk(fromUserId, { 
-      transaction,
-      lock: transaction.LOCK.UPDATE 
-    });
-    const toUser = await User.findOne({ 
-      where: { username: toUsername }, 
-      transaction,
-      lock: transaction.LOCK.UPDATE 
-    });
+      if (!fromUser) {
+        const err = new Error("Sender not found");
+        err.statusCode = 404;
+        throw err;
+      }
+      if (!toUser) {
+        const err = new Error("Recipient not found");
+        err.statusCode = 400;
+        throw err;
+      }
+      if (fromUser.id === toUser.id) {
+        const err = new Error("Cannot transfer to yourself");
+        err.statusCode = 400;
+        throw err;
+      }
 
-    if (!toUser) {
-      if (transaction) await transaction.rollback();
-      return res.status(400).send({ message: "Recipient not found" });
-    }
-    if (fromUser.id === toUser.id) {
-      if (transaction) await transaction.rollback();
-      return res.status(400).send({ message: "Cannot transfer to yourself" });
-    }
+      const allowedCurrencies = new Set(['COIN', 'USD', 'RUB', 'BTC']);
+      if (!allowedCurrencies.has(currency)) {
+        const err = new Error("Unsupported currency");
+        err.statusCode = 400;
+        throw err;
+      }
 
-    const allowedCurrencies = new Set(['COIN', 'USD', 'RUB', 'BTC']);
-    if (!allowedCurrencies.has(currency)) {
-      if (transaction) await transaction.rollback();
-      return res.status(400).send({ message: "Unsupported currency" });
-    }
+      const balanceField = currency === 'RUB' ? 'rubBalance' : (currency === 'USD' ? 'usdBalance' : (currency === 'BTC' ? 'btcBalance' : 'coinBalance'));
+      const fromBalance = parseFloat(fromUser[balanceField] || 0);
+      if (fromBalance < parsedAmount) {
+        const err = new Error("Insufficient balance");
+        err.statusCode = 400;
+        throw err;
+      }
 
-    const balanceField = currency === 'RUB' ? 'rubBalance' : (currency === 'USD' ? 'usdBalance' : (currency === 'BTC' ? 'btcBalance' : 'coinBalance'));
+      await fromUser.update({ [balanceField]: fromBalance - parsedAmount }, { transaction });
+      await toUser.update({ [balanceField]: parseFloat(toUser[balanceField] || 0) + parsedAmount }, { transaction });
 
-    const fromBalance = parseFloat(fromUser[balanceField] || 0);
-    if (fromBalance < parsedAmount) {
-      if (transaction) await transaction.rollback();
-      return res.status(400).send({ message: "Insufficient balance" });
-    }
+      let fromWallet = await CryptoWallet.findOne({
+        where: { userId: fromUserId },
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      if (!fromWallet) {
+        fromWallet = await CryptoWallet.create({
+          userId: fromUserId,
+          walletAddress: `wallet_${fromUserId}_${Date.now()}`,
+          walletType: 'default',
+          [balanceField]: fromUser[balanceField]
+        }, { transaction });
+      } else {
+        await fromWallet.update({ [balanceField]: fromUser[balanceField] }, { transaction });
+      }
 
-    // Update Users
-    await fromUser.update({ [balanceField]: fromBalance - parsedAmount }, { transaction });
-    await toUser.update({ [balanceField]: parseFloat(toUser[balanceField] || 0) + parsedAmount }, { transaction });
+      let toWallet = await CryptoWallet.findOne({
+        where: { userId: toUser.id },
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      if (!toWallet) {
+        toWallet = await CryptoWallet.create({
+          userId: toUser.id,
+          walletAddress: `wallet_${toUser.id}_${Date.now()}`,
+          walletType: 'default',
+          [balanceField]: toUser[balanceField]
+        }, { transaction });
+      } else {
+        await toWallet.update({ [balanceField]: toUser[balanceField] }, { transaction });
+      }
 
-    // Update Wallets (One wallet per user model)
-    let fromWallet = await CryptoWallet.findOne({ 
-      where: { userId: fromUserId }, 
-      transaction,
-      lock: transaction.LOCK.UPDATE 
-    });
-    if (!fromWallet) {
-      fromWallet = await CryptoWallet.create({
-        userId: fromUserId,
-        walletAddress: `wallet_${fromUserId}_${Date.now()}`,
-        walletType: 'default',
-        [balanceField]: fromUser[balanceField]
+      await Transaction.create({
+        amount: parsedAmount,
+        currencyCode: currency,
+        transactionType: 'transfer',
+        status: 'completed',
+        transactionHash: `TRANSFER_${Date.now()}`,
+        fromWalletId: fromWallet.id,
+        toWalletId: toWallet.id,
+        notes: `Transfer from ${fromUser.username} to ${toUser.username}`
       }, { transaction });
-    } else {
-      await fromWallet.update({ [balanceField]: fromUser[balanceField] }, { transaction });
-    }
 
-    let toWallet = await CryptoWallet.findOne({ 
-      where: { userId: toUser.id }, 
-      transaction,
-      lock: transaction.LOCK.UPDATE 
+      return { newBalance: fromUser[balanceField] };
     });
-    if (!toWallet) {
-      toWallet = await CryptoWallet.create({
-        userId: toUser.id,
-        walletAddress: `wallet_${toUser.id}_${Date.now()}`,
-        walletType: 'default',
-        [balanceField]: toUser[balanceField]
-      }, { transaction });
-    } else {
-      await toWallet.update({ [balanceField]: toUser[balanceField] }, { transaction });
-    }
 
-    await Transaction.create({
-      amount: parsedAmount,
-      currencyCode: currency,
-      transactionType: 'transfer',
-      status: 'completed',
-      transactionHash: `TRANSFER_${Date.now()}`,
-      fromWalletId: fromWallet.id,
-      toWalletId: toWallet.id,
-      notes: `Transfer from ${fromUser.username} to ${toUser.username}`
-    }, { transaction });
-
-    await transaction.commit();
-    res.send({ message: "Transfer successful", newBalance: fromUser[balanceField] });
+    res.send({ message: "Transfer successful", newBalance: result.newBalance });
   } catch (err) {
-    if (transaction) await transaction.rollback();
     console.error("Transfer error:", err);
-    res.status(500).send({ message: err.message || "Error processing transfer" });
+    if (isSerializationFailure(err)) {
+      return res.status(409).send({ message: "Could not serialize access, please retry request" });
+    }
+    res.status(err.statusCode || 500).send({ message: err.message || "Error processing transfer" });
   }
 };
 
 // Exchange currency with ACID transaction
 exports.exchangeCurrency = async (req, res) => {
-  // ВАЖНО: предполагается конкурентная запись на балансы пользователя при обмене валют.
-  // Выбран уровень изоляции SERIALIZABLE для предотвращения lost update и аномалий сериализации.
-  // Используется блокировка UPDATE (FOR UPDATE) на запись пользователя и кошелёк.
-  const transaction = await db.sequelize.transaction({
-    isolationLevel: db.Sequelize.Transaction.ISOLATION_LEVELS.SERIALIZABLE
-  });
   try {
     const { fromCurrency, toCurrency, amount } = req.body;
     const userId = req.userId;
 
     if (!fromCurrency || !toCurrency || amount === undefined || amount === null) {
-      if (transaction) await transaction.rollback();
       return res.status(400).send({ message: "From currency, to currency and amount are required" });
     }
 
     const parsedAmount = parseFloat(amount);
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-      if (transaction) await transaction.rollback();
       return res.status(400).send({ message: "Amount must be a positive number" });
     }
 
     if (fromCurrency === toCurrency) {
-      if (transaction) await transaction.rollback();
       return res.status(400).send({ message: "From and to currency must be different" });
     }
+    const result = await runWithSerializableRetry(async (transaction) => {
+      const user = await User.findByPk(userId, {
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
 
-    const user = await User.findByPk(userId, { 
-      transaction,
-      lock: transaction.LOCK.UPDATE 
+      if (!user) {
+        const err = new Error("User not found");
+        err.statusCode = 404;
+        throw err;
+      }
+
+      const rates = { 'COIN': 1, 'USD': 0.5, 'RUB': 50, 'BTC': 0.00001 };
+      if (!rates[fromCurrency] || !rates[toCurrency]) {
+        const err = new Error("Unsupported currency");
+        err.statusCode = 400;
+        throw err;
+      }
+      const fromField = fromCurrency === 'RUB' ? 'rubBalance' : (fromCurrency === 'USD' ? 'usdBalance' : (fromCurrency === 'BTC' ? 'btcBalance' : 'coinBalance'));
+      const toField = toCurrency === 'RUB' ? 'rubBalance' : (toCurrency === 'USD' ? 'usdBalance' : (toCurrency === 'BTC' ? 'btcBalance' : 'coinBalance'));
+
+      if (parseFloat(user[fromField] || 0) < parsedAmount) {
+        const err = new Error("Insufficient balance");
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const amountInCoin = parsedAmount / rates[fromCurrency];
+      const targetAmount = amountInCoin * rates[toCurrency];
+
+      await user.update({
+        [fromField]: parseFloat(user[fromField]) - parsedAmount,
+        [toField]: parseFloat(user[toField] || 0) + targetAmount
+      }, { transaction });
+
+      let wallet = await CryptoWallet.findOne({
+        where: { userId: userId },
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      if (!wallet) {
+        wallet = await CryptoWallet.create({
+          userId: userId,
+          walletAddress: `wallet_${userId}_${Date.now()}`,
+          walletType: 'default',
+          [fromField]: user[fromField],
+          [toField]: user[toField]
+        }, { transaction });
+      } else {
+        await wallet.update({
+          [fromField]: user[fromField],
+          [toField]: user[toField]
+        }, { transaction });
+      }
+
+      await Transaction.create({
+        amount: parsedAmount,
+        currencyCode: toCurrency,
+        transactionType: 'exchange',
+        status: 'completed',
+        transactionHash: `EXCHANGE_${Date.now()}`,
+        fromWalletId: wallet.id,
+        toWalletId: wallet.id,
+        notes: `Exchange ${amount} ${fromCurrency} to ${targetAmount.toFixed(8)} ${toCurrency}`
+      }, { transaction });
+
+      return {
+        newBalanceFrom: user[fromField],
+        newBalanceTo: user[toField],
+        exchangedAmount: targetAmount
+      };
     });
 
-    const rates = { 'COIN': 1, 'USD': 0.5, 'RUB': 50, 'BTC': 0.00001 };
-    if (!rates[fromCurrency] || !rates[toCurrency]) {
-      if (transaction) await transaction.rollback();
-      return res.status(400).send({ message: "Unsupported currency" });
-    }
-    const fromField = fromCurrency === 'RUB' ? 'rubBalance' : (fromCurrency === 'USD' ? 'usdBalance' : (fromCurrency === 'BTC' ? 'btcBalance' : 'coinBalance'));
-    const toField = toCurrency === 'RUB' ? 'rubBalance' : (toCurrency === 'USD' ? 'usdBalance' : (toCurrency === 'BTC' ? 'btcBalance' : 'coinBalance'));
-
-    if (parseFloat(user[fromField] || 0) < parsedAmount) {
-      if (transaction) await transaction.rollback();
-      return res.status(400).send({ message: "Insufficient balance" });
-    }
-
-    const amountInCoin = parsedAmount / rates[fromCurrency];
-    const targetAmount = amountInCoin * rates[toCurrency];
-
-    await user.update({
-      [fromField]: parseFloat(user[fromField]) - parsedAmount,
-      [toField]: parseFloat(user[toField] || 0) + targetAmount
-    }, { transaction });
-
-    // Update Wallet (One wallet per user model)
-    let wallet = await CryptoWallet.findOne({ 
-      where: { userId: userId }, 
-      transaction,
-      lock: transaction.LOCK.UPDATE 
-    });
-    if (!wallet) {
-      wallet = await CryptoWallet.create({
-        userId: userId,
-        walletAddress: `wallet_${userId}_${Date.now()}`,
-        walletType: 'default',
-        [fromField]: user[fromField],
-        [toField]: user[toField]
-      }, { transaction });
-    } else {
-      await wallet.update({
-        [fromField]: user[fromField],
-        [toField]: user[toField]
-      }, { transaction });
-    }
-
-    await Transaction.create({
-      amount: parsedAmount,
-      currencyCode: toCurrency,
-      transactionType: 'exchange',
-      status: 'completed',
-      transactionHash: `EXCHANGE_${Date.now()}`,
-      fromWalletId: wallet.id,
-      toWalletId: wallet.id,
-      notes: `Exchange ${amount} ${fromCurrency} to ${targetAmount.toFixed(8)} ${toCurrency}`
-    }, { transaction });
-
-    await transaction.commit();
     res.send({
       message: "Exchange successful",
-      newBalanceFrom: user[fromField],
-      newBalanceTo: user[toField],
-      exchangedAmount: targetAmount
+      newBalanceFrom: result.newBalanceFrom,
+      newBalanceTo: result.newBalanceTo,
+      exchangedAmount: result.exchangedAmount
     });
   } catch (err) {
-    if (transaction) await transaction.rollback();
     console.error("Exchange error:", err);
-    res.status(500).send({ message: err.message || "Error processing exchange" });
+    if (isSerializationFailure(err)) {
+      return res.status(409).send({ message: "Could not serialize access, please retry request" });
+    }
+    res.status(err.statusCode || 500).send({ message: err.message || "Error processing exchange" });
   }
 };

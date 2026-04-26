@@ -531,7 +531,20 @@ async function loadWalletsForTopup() {
         const response = await fetch(`${API_BASE}/crypto-wallets/my-wallets`, {
             headers: { 'Authorization': `Bearer ${authToken}` }
         });
+        if (response.status === 401) {
+            logout();
+            return;
+        }
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            console.error('Wallets for topup API error:', error);
+            return;
+        }
         const wallets = await response.json();
+        if (!Array.isArray(wallets)) {
+            console.error('Wallets for topup response is not an array:', wallets);
+            return;
+        }
 
         const select = document.getElementById('topupWalletSelect');
         select.innerHTML = '<option value="">Выберите кошелёк...</option>';
@@ -599,11 +612,17 @@ async function loadWalletsData() {
             return;
         }
 
-        // Сначала вызываем ensureWallet для проверки и создания кошелька
-        await fetch(`${API_BASE}/crypto-wallets/ensure`, {
+        // Сначала вызываем ensureWallet для проверки и создания кошелька.
+        // If token is outdated (pre-UUID), backend returns 401.
+        const ensureResponse = await fetch(`${API_BASE}/crypto-wallets/ensure`, {
             method: 'POST',
             headers
         });
+        if (ensureResponse.status === 401) return logout();
+        if (!ensureResponse.ok) {
+            const ensureError = await ensureResponse.json().catch(() => ({}));
+            console.error('Ensure wallet API error:', ensureError);
+        }
 
         // Затем загружаем кошельки
         const res = await fetch(`${API_BASE}/crypto-wallets`, { headers });
@@ -1707,7 +1726,16 @@ function deleteTransaction(id) {
 async function loadRecentTransactions() {
     try {
         const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
-        const transactions = await fetch(`${API_BASE}/transactions`, { headers }).then(r => r.json());
+        const response = await fetch(`${API_BASE}/transactions`, { headers });
+        if (!response.ok) {
+            console.error('Recent transactions API error:', response.status);
+            return;
+        }
+        const transactions = await response.json();
+        if (!Array.isArray(transactions)) {
+            console.error('Recent transactions response is not an array:', transactions);
+            return;
+        }
         const recent = transactions.slice(0, 5);
 
         const container = document.getElementById('recentTransactions');
@@ -2154,9 +2182,20 @@ async function saveChartPoint(symbol, price, timestamp) {
         if (response.ok) {
             showToast('Поинт сохранен!', 'success');
             loadPointsChart();
+            return;
         }
+
+        if (response.status === 401) {
+            logout();
+            return;
+        }
+
+        const error = await response.json().catch(() => ({}));
+        console.error('Chart point API error:', error);
+        showToast(error.message || 'Ошибка сохранения точки', 'danger');
     } catch (error) {
         console.error('Error saving point:', error);
+        showToast('Ошибка сохранения точки', 'danger');
     }
 }
 

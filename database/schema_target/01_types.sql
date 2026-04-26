@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TYPE public.enum_likes_like_type AS ENUM (
     'like',
     'dislike',

@@ -1,4 +1,5 @@
 const Joi = require('joi');
+const uuidSchema = Joi.string().guid({ version: ['uuidv4', 'uuidv5'] });
 
 // User validation schemas
 const createUserSchema = Joi.object({
@@ -28,7 +29,7 @@ const createNewsPostSchema = Joi.object({
   postType: Joi.string().valid('news', 'prediction', 'analysis', 'announcement').optional(),
   category: Joi.string().max(100).optional(),
   isPublished: Joi.boolean().optional(),
-  authorId: Joi.number().integer().positive().required()
+  authorId: uuidSchema.required()
 });
 
 const updateNewsPostSchema = Joi.object({
@@ -46,7 +47,7 @@ const createCryptoWalletSchema = Joi.object({
   balance: Joi.number().min(0).optional(),
   currencyCode: Joi.string().length(3).uppercase().required(),
   isActive: Joi.boolean().optional(),
-  userId: Joi.number().integer().positive().required()
+  userId: uuidSchema.required()
 });
 
 const updateCryptoWalletSchema = Joi.object({
@@ -65,8 +66,8 @@ const createTransactionSchema = Joi.object({
   status: Joi.string().valid('pending', 'completed', 'failed', 'cancelled').optional(),
   fee: Joi.number().min(0).optional(),
   transactionHash: Joi.string().max(255).optional(),
-  fromWalletId: Joi.number().integer().positive().required(),
-  toWalletId: Joi.number().integer().positive().required()
+  fromWalletId: uuidSchema.required(),
+  toWalletId: uuidSchema.required()
 });
 
 const updateTransactionSchema = Joi.object({
@@ -104,9 +105,9 @@ const updateCryptoCurrencySchema = Joi.object({
 // Comment validation schemas
 const createCommentSchema = Joi.object({
   content: Joi.string().min(1).max(2000).required(),
-  userId: Joi.number().integer().positive().required(),
-  postId: Joi.number().integer().positive().required(),
-  parentCommentId: Joi.number().integer().positive().allow(null).optional()
+  userId: uuidSchema.required(),
+  postId: uuidSchema.required(),
+  parentCommentId: uuidSchema.allow(null).optional()
 });
 
 const updateCommentSchema = Joi.object({
@@ -119,8 +120,8 @@ const createUserPredictionSchema = Joi.object({
   predictedPrice: Joi.number().positive().required(),
   targetPrice: Joi.number().positive().required(),
   predictionType: Joi.string().valid('bullish', 'bearish', 'neutral').required(),
-  userId: Joi.number().integer().positive().required(),
-  currencyId: Joi.number().integer().positive().required(),
+  userId: uuidSchema.required(),
+  currencyId: uuidSchema.required(),
   predictionDate: Joi.date().required(),
   targetDate: Joi.date().min(Joi.ref('predictionDate')).required(),
   isActive: Joi.boolean().optional(),
@@ -139,8 +140,8 @@ const updateUserPredictionSchema = Joi.object({
 
 // Like validation schemas
 const createLikeSchema = Joi.object({
-  userId: Joi.number().integer().positive().required(),
-  postId: Joi.number().integer().positive().required(),
+  userId: uuidSchema.required(),
+  postId: uuidSchema.required(),
   likeType: Joi.string().valid('like', 'dislike', 'love').required()
 });
 

@@ -21,7 +21,8 @@ module.exports = app => {
    *         name: userId
    *         required: true
    *         schema:
-   *           type: integer
+   *           type: string
+   *           format: uuid
    *     responses:
    *       200:
    *         description: User statistics retrieved successfully
@@ -94,7 +95,8 @@ module.exports = app => {
    *         name: userId
    *         required: true
    *         schema:
-   *           type: integer
+   *           type: string
+   *           format: uuid
    *     responses:
    *       200:
    *         description: Wallet summary retrieved successfully
