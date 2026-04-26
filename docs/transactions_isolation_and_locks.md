@@ -54,29 +54,18 @@ const fromUser = await User.findByPk(fromUserId, {
 
 ## Обработка ошибок сериализации
 
-При уровне SERIALIZABLE возможны ошибки `could not serialize access due to concurrent update`. В текущей реализации они обрабатываются через rollback с сообщением об ошибке. Для продакшена рекомендуется добавить retry-логику:
+При уровне SERIALIZABLE возможны ошибки `could not serialize access due to concurrent update` (PostgreSQL code `40001`).
 
-```javascript
-const maxRetries = 3;
-let retryCount = 0;
+В проекте retry-логика уже реализована:
+- Максимум 3 попытки (`MAX_SERIALIZATION_RETRIES = 3`)
+- Для каждой попытки создается новая транзакция `SERIALIZABLE`
+- При `40001` выполняется rollback и повтор
+- Если лимит попыток исчерпан — возвращается HTTP `409 Conflict`
+- Для других ошибок возвращается соответствующий статус (`400/404/500`)
 
-while (retryCount < maxRetries) {
-  try {
-    // ... транзакция ...
-    await transaction.commit();
-    break; // успех
-  } catch (err) {
-    if (err.message.includes('could not serialize')) {
-      retryCount++;
-      await transaction.rollback();
-      // небольшая задержка перед повтором
-      await new Promise(resolve => setTimeout(resolve, 100));
-    } else {
-      throw err; // другая ошибка
-    }
-  }
-}
-```
+Практическое значение:
+- уменьшается вероятность пользовательской ошибки при кратковременных конкурентных конфликтах;
+- сохраняется ACID-целостность, потому что каждая неуспешная попытка полностью откатывается.
 
 ## Вывод
 
